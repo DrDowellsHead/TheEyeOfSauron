@@ -467,7 +467,6 @@ def build_report(poll_question: str, option_texts: List[str], voter_ids: Set[int
         lines.append(f"⚠️ Не найдено в базе: {not_found}")
 
     lines.append("")
-    lines.append("ℹ️ Данные собраны из голосов опроса (неанонимного)")
     return "\n".join(lines)
 
 
