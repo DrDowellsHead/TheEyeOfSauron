@@ -3,6 +3,7 @@ import os
 import argparse
 from datetime import datetime
 import configparser
+import re
 
 from telethon import TelegramClient, functions, errors
 from telethon.tl import types
@@ -299,72 +300,125 @@ def pick_poll(polls: list, poll_query: str | None):
     return polls[0][0]
 
 
-async def fetch_poll_voters_for_checkmark(client: TelegramClient, chat_peer, poll_msg):
+async def fetch_poll_voters_for_checkmark(client: TelegramClient, chat_peer, poll_msg, smart_sort: bool = False):
     poll = poll_msg.media.poll
 
+    def norm(txt: str) -> str:
+        t = (as_text(txt) or "").strip().casefold()
+        return " ".join(t.split())
+
     def is_yes_option(txt) -> bool:
-        t = as_text(txt).strip().casefold()
-        t = " ".join(t.split())  # нормализуем пробелы
+        t = norm(txt)
+
+        # Явные "нет"
+        if "не смогу" in t or (t.startswith("не") and "смогу" in t):
+            return False
+        if "не приду" in t or (t.startswith("не") and "приду" in t):
+            return False
 
         # Репетиции
         if "✅" in t:
             return True
-        if "приду" in t and "не приду" not in t:
+        if "приду" in t:
             return True
 
-        # Концерты: "Смогу" vs "Не смогу"
-        # ВАЖНО: "не смогу" содержит "смогу", поэтому исключаем явно
-        if "смогу" in t and "не смогу" not in t and not t.startswith("не "):
+        # Концерты: все варианты "смогу ..."
+        if "смогу" in t:
             return True
 
         return False
 
-    # 1) Находим нужную опцию (✅ / приду / смогу)
-    target = None
-    for ans in poll.answers:
-        if is_yes_option(ans.text):
-            target = ans
-            break
+    def extract_time_minutes(txt: str) -> int | None:
+        """
+        Ищем время в варианте ответа.
+        Считаем только то, что похоже на "в 13:00", "к 10", "в 9", "к 8:30".
+        """
+        t = norm(txt)
 
-    if not target:
+        # матч "в 13:00" / "к 10" / "в 9"
+        m = re.search(r"(?:\bв\b|\bк\b)\s*(\d{1,2})(?::(\d{2}))?\b", t)
+        if not m:
+            return None
+
+        hh = int(m.group(1))
+        mm = int(m.group(2) or "0")
+        if not (0 <= hh <= 23 and 0 <= mm <= 59):
+            return None
+        return hh * 60 + mm
+
+    def kw_rank(txt: str) -> int:
+        """
+        Порядок 'смысловых' вариантов, когда времени нет.
+        Меньше = раньше в списке.
+        """
+        t = norm(txt)
+        if "саунд" in t or "чек" in t:
+            return 0
+        if "репет" in t:
+            return 1
+        if "концерт" in t:
+            return 2
+        return 3
+
+    # 1) Находим ВСЕ подходящие опции (✅ / приду / смогу...)
+    targets = [ans for ans in poll.answers if is_yes_option(ans.text)]
+
+    if not targets:
         answers_debug = "\n".join([f"- {as_text(a.text)}" for a in poll.answers])
         raise RuntimeError(
-            "В опросе нет подходящего варианта (✅/приду/смогу).\n"
+            "В опросе нет подходящих вариантов (✅/приду/смогу...).\n"
             f"Варианты:\n{answers_debug}"
         )
+
+    # 1.1) Умная сортировка (по флагу)
+    if smart_sort:
+        # сохраняем исходный порядок как последний критерий (стабильность)
+        index_map = {id(ans): i for i, ans in enumerate(targets)}
+
+        def sort_key(ans) -> tuple:
+            txt = as_text(ans.text)
+            tmin = extract_time_minutes(txt)
+            # timed -> раньше, потом без времени по смыслу
+            if tmin is not None:
+                return (0, tmin, kw_rank(txt), index_map[id(ans)])
+            return (1, kw_rank(txt), 10_000, index_map[id(ans)])
+
+        targets = sorted(targets, key=sort_key)
 
     # 2) Проверяем, что опрос не анонимный
     if not getattr(poll, "public_voters", False):
         raise RuntimeError("Опрос анонимный — Telegram не отдаёт список проголосовавших.")
 
-    # 3) Выгружаем проголосовавших за найденную опцию
+    # 3) Выгружаем проголосовавших по каждой опции и объединяем
     voter_ids = set()
-    offset = None
 
-    while True:
-        res = await client(functions.messages.GetPollVotesRequest(
-            peer=chat_peer,
-            id=poll_msg.id,
-            option=target.option,  # bytes
-            offset=offset,
-            limit=VOTES_PAGE_SIZE
-        ))
+    for target in targets:
+        offset = None
+        while True:
+            res = await client(functions.messages.GetPollVotesRequest(
+                peer=chat_peer,
+                id=poll_msg.id,
+                option=target.option,   # bytes
+                offset=offset,
+                limit=VOTES_PAGE_SIZE
+            ))
 
-        for v in getattr(res, "votes", []) or []:
-            peer = getattr(v, "peer", None)
-            if isinstance(peer, types.PeerUser):
-                voter_ids.add(int(peer.user_id))
+            for v in getattr(res, "votes", []) or []:
+                peer = getattr(v, "peer", None)
+                if isinstance(peer, types.PeerUser):
+                    voter_ids.add(int(peer.user_id))
 
-        for u in getattr(res, "users", []) or []:
-            if getattr(u, "id", None):
-                voter_ids.add(int(u.id))
+            for u in getattr(res, "users", []) or []:
+                if getattr(u, "id", None):
+                    voter_ids.add(int(u.id))
 
-        next_offset = getattr(res, "next_offset", None)
-        if not next_offset:
-            break
-        offset = next_offset
+            next_offset = getattr(res, "next_offset", None)
+            if not next_offset:
+                break
+            offset = next_offset
 
-    return voter_ids, as_text(target.text)
+    option_text = " / ".join(as_text(t.text) for t in targets)
+    return voter_ids, option_text
 
 
 def build_report(voter_ids: set[int], musicians: dict[int, str], header: str) -> str:
@@ -418,6 +472,9 @@ async def main():
     parser.add_argument("--topic-id", type=int, default=0, help="ID темы (topic_id)")
     parser.add_argument("--topic", type=str, default="", help="Найти тему по части названия")
     parser.add_argument("--poll", type=str, default="", help="Найти опрос по подстроке в вопросе")
+    parser.add_argument("--smart-sort",action="store_true",help="Умно сортировать позитивные варианты (Смогу...) по времени/смыслу"
+)
+
     args = parser.parse_args()
 
     print("🎻 Запуск парсера оркестра...")
@@ -464,7 +521,8 @@ async def main():
 
         # 3) Получаем проголосовавших за ✅
         try:
-            voter_ids, option_text = await fetch_poll_voters_for_checkmark(client, chat_peer, poll_msg)
+            voter_ids, option_text = await fetch_poll_voters_for_checkmark(
+    client, chat_peer, poll_msg, smart_sort=args.smart_sort)
         except errors.PollVoteRequiredError:
             await client.send_message(
                 "me",
