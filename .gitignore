@@ -1,0 +1,7 @@
+collect_ids.session
+orchestra_parser.session
+*.xls;xlsx;csv
+/.venv
+/.idea
+Музыканты.csv
+участники.csv
