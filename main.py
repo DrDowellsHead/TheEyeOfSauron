@@ -2,22 +2,64 @@ import asyncio
 import os
 import argparse
 from datetime import datetime
+import configparser
 
 from telethon import TelegramClient, functions, errors
 from telethon.tl import types
 from telethon.tl.types import MessageMediaPoll
 
+
+import configparser
+import os
+
+def load_config(path="config.ini"):
+    cfg = configparser.ConfigParser()
+    if not os.path.exists(path):
+        raise FileNotFoundError(
+            f"Не найден {path}. Создай его из config.example.ini и заполни значения."
+        )
+    cfg.read(path, encoding="utf-8")
+
+    # telegram
+    api_id = int(cfg["telegram"]["api_id"])
+    api_hash = cfg["telegram"]["api_hash"].strip()
+    session_name = cfg["telegram"].get("session_name", "orchestra_parser").strip()
+
+    chat_id = int(cfg["telegram"]["chat_id"])
+    default_topic_id = int(cfg["telegram"].get("default_topic_id", "0"))
+
+    # files
+    musicians_csv = cfg["files"].get("musicians_csv", "Музыканты.csv").strip()
+
+    # search
+    search_limit = int(cfg["search"].get("search_limit", "300"))
+    votes_page_size = int(cfg["search"].get("votes_page_size", "100"))
+
+    return {
+        "API_ID": api_id,
+        "API_HASH": api_hash,
+        "SESSION_NAME": session_name,
+        "CHAT_ID": chat_id,
+        "DEFAULT_TOPIC_ID": default_topic_id,
+        "MUSICIANS_CSV": musicians_csv,
+        "SEARCH_LIMIT": search_limit,
+        "VOTES_PAGE_SIZE": votes_page_size,
+    }
+
+
 # ====== ТВОИ НАСТРОЙКИ ======
-API_ID = 123456789
-API_HASH = '123456789'
-SESSION_NAME = "orchestra_parser"
+CONF = load_config()
 
-CHAT_ID = -123456789
-DEFAULT_TOPIC_ID = 4  # тема по умолчанию (если не передали --topic-id/--topic)
-MUSICIANS_CSV = "Музыканты.csv"
+API_ID = CONF["API_ID"]
+API_HASH = CONF["API_HASH"]
+SESSION_NAME = CONF["SESSION_NAME"]
 
-SEARCH_LIMIT = 300  # сколько сообщений в теме смотреть при поиске опросов
-VOTES_PAGE_SIZE = 100
+CHAT_ID = CONF["CHAT_ID"]
+DEFAULT_TOPIC_ID = CONF["DEFAULT_TOPIC_ID"]  # тема по умолчанию (если не передали --topic-id/--topic)
+MUSICIANS_CSV = CONF["MUSICIANS_CSV"]
+
+SEARCH_LIMIT = CONF["SEARCH_LIMIT"]  # сколько сообщений в теме смотреть при поиске опросов
+VOTES_PAGE_SIZE = CONF["VOTES_PAGE_SIZE"]
 
 
 # ====== ВСПОМОГАТЕЛЬНОЕ ======
