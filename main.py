@@ -1,32 +1,58 @@
 import asyncio
-import os
 import argparse
-from datetime import datetime
+import configparser
+import csv
+import os
+import re
+from typing import Dict, List, Optional, Set, Tuple
 
 from telethon import TelegramClient, functions, errors
 from telethon.tl import types
 from telethon.tl.types import MessageMediaPoll
 
-# ====== ТВОИ НАСТРОЙКИ ======
-API_ID = 123456789
-API_HASH = '123456789'
-SESSION_NAME = "orchestra_parser"
 
-CHAT_ID = -123456789
-DEFAULT_TOPIC_ID = 4  # тема по умолчанию (если не передали --topic-id/--topic)
-MUSICIANS_CSV = "Музыканты.csv"
-
-SEARCH_LIMIT = 300  # сколько сообщений в теме смотреть при поиске опросов
-VOTES_PAGE_SIZE = 100
+# =========================
+# ЛОГГЕР
+# =========================
+def log(msg: str) -> None:
+    print(msg, flush=True)
 
 
-# ====== ВСПОМОГАТЕЛЬНОЕ ======
-def as_text(x) -> str:
-    if x is None:
-        return ""
-    return x.text if hasattr(x, "text") else str(x)
+# =========================
+# CONFIG
+# =========================
+def load_config(path: str = "config.ini") -> dict:
+    cfg = configparser.ConfigParser()
+    if not os.path.exists(path):
+        raise FileNotFoundError(
+            f"Не найден {path}.\n"
+            f"Создай его из config.example.ini и заполни свои значения."
+        )
+
+    cfg.read(path, encoding="utf-8")
+
+    def get(section: str, key: str, default: Optional[str] = None) -> str:
+        if section not in cfg or key not in cfg[section]:
+            if default is None:
+                raise KeyError(f"В конфиге нет [{section}] {key}")
+            return default
+        return cfg[section][key].strip()
+
+    return {
+        "API_ID": int(get("telegram", "api_id")),
+        "API_HASH": get("telegram", "api_hash"),
+        "SESSION_NAME": get("telegram", "session_name", "orchestra_parser"),
+        "CHAT_ID": int(get("telegram", "chat_id")),
+        "DEFAULT_TOPIC_ID": int(get("telegram", "default_topic_id", "0")),
+        "MUSICIANS_CSV": get("files", "musicians_csv", "Музыканты.csv"),
+        "SEARCH_LIMIT": int(get("search", "search_limit", "300")),
+        "VOTES_PAGE_SIZE": int(get("search", "votes_page_size", "100")),
+    }
 
 
+# =========================
+# РУССКИЕ ОКОНЧАНИЯ
+# =========================
 def plural_ru(n: int, form1: str, form2: str, form5: str) -> str:
     n = abs(int(n))
     n10 = n % 10
@@ -59,6 +85,7 @@ INSTR_FORMS = {
     "фортепиано": ("фортепиано", "фортепиано", "фортепиано"),
     "арфа": ("арфа", "арфы", "арф"),
     "дирижёр": ("дирижёр", "дирижёра", "дирижёров"),
+    "неизвестно": ("неизвестный", "неизвестных", "неизвестных"),
 }
 
 ICON = {
@@ -80,7 +107,17 @@ ICON = {
     "фортепиано": "🎹",
     "арфа": "🎶",
     "дирижёр": "👨‍🏫",
+    "неизвестно": "❓",
 }
+
+
+# =========================
+# ВСПОМОГАТЕЛЬНОЕ
+# =========================
+def as_text(x) -> str:
+    if x is None:
+        return ""
+    return x.text if hasattr(x, "text") else str(x)
 
 
 def normalize_instrument(raw: str) -> str:
@@ -91,7 +128,7 @@ def normalize_instrument(raw: str) -> str:
             return "первые скрипки"
         if "2" in s:
             return "вторые скрипки"
-        return "первые скрипки"  # если в базе просто "скрипки" — лучше уточнить, но пусть так
+        return "первые скрипки"  # если база хранит просто "скрипки" — выбери, что удобнее
 
     if "альт" in s:
         return "альт"
@@ -132,46 +169,37 @@ def normalize_instrument(raw: str) -> str:
     return s or "неизвестно"
 
 
-def load_musicians(path: str) -> dict[int, str]:
+def load_musicians_csv(path: str) -> Tuple[Dict[int, str], int]:
     """
-    Пытаемся через pandas (если есть), иначе fallback на встроенный csv.
-    CSV у тебя с разделителем ; и колонками user_id, Инструмент.
+    CSV: delimiter ';', columns: user_id, Инструмент
+    Возвращает: (user_id -> instrument, total_rows)
     """
     if not os.path.exists(path):
-        raise FileNotFoundError(f"Не найден файл: {path}")
+        raise FileNotFoundError(f"Файл не найден: {path}")
 
-    try:
-        import pandas as pd
-        df = pd.read_csv(path, delimiter=";", encoding="utf-8-sig")
-        musicians: dict[int, str] = {}
-        for _, row in df.iterrows():
-            uid = row.get("user_id")
-            instr = row.get("Инструмент")
-            if uid is None or instr is None:
+    musicians: Dict[int, str] = {}
+    total_rows = 0
+
+    with open(path, "r", encoding="utf-8-sig", newline="") as f:
+        reader = csv.DictReader(f, delimiter=";")
+        for row in reader:
+            total_rows += 1
+            uid = (row.get("user_id") or "").strip()
+            instr = (row.get("Инструмент") or "").strip()
+            if not uid or not instr:
                 continue
             try:
-                musicians[int(uid)] = str(instr).strip()
-            except Exception:
-                pass
-        return musicians
-    except ImportError:
-        import csv
-        musicians: dict[int, str] = {}
-        with open(path, "r", encoding="utf-8-sig", newline="") as f:
-            r = csv.DictReader(f, delimiter=";")
-            for row in r:
-                uid = (row.get("user_id") or "").strip()
-                instr = (row.get("Инструмент") or "").strip()
-                if not uid or not instr:
-                    continue
-                try:
-                    musicians[int(uid)] = instr
-                except ValueError:
-                    pass
-        return musicians
+                musicians[int(uid)] = instr
+            except ValueError:
+                continue
+
+    return musicians, total_rows
 
 
-async def get_forum_topics(client, chat_entity, query: str | None, limit: int = 100):
+# =========================
+# TOPICS (совместимость Telethon)
+# =========================
+async def get_forum_topics(client: TelegramClient, chat_entity, query: Optional[str], limit: int = 100):
     q = query if query else None
 
     if hasattr(functions.channels, "GetForumTopicsRequest"):
@@ -181,7 +209,7 @@ async def get_forum_topics(client, chat_entity, query: str | None, limit: int = 
             offset_date=None,
             offset_id=0,
             offset_topic=0,
-            limit=limit
+            limit=limit,
         )
     elif hasattr(functions.messages, "GetForumTopicsRequest"):
         req = functions.messages.GetForumTopicsRequest(
@@ -190,48 +218,53 @@ async def get_forum_topics(client, chat_entity, query: str | None, limit: int = 
             offset_date=None,
             offset_id=0,
             offset_topic=0,
-            limit=limit
+            limit=limit,
         )
     else:
         raise RuntimeError(
-            "В вашей версии Telethon нет getForumTopics. Обновите telethon: python -m pip install -U telethon"
+            "В вашей версии Telethon нет getForumTopics.\n"
+            "Обновите: python -m pip install -U telethon"
         )
 
     res = await client(req)
     return getattr(res, "topics", []) or []
 
 
-async def choose_topic_id(client: TelegramClient, chat_entity, topic_title_query: str | None) -> int:
-    topics = await get_forum_topics(client, chat_entity, query=topic_title_query, limit=100)
-
+async def choose_topic_id(client: TelegramClient, chat_entity, topic_title_query: str) -> int:
+    topics = await get_forum_topics(client, chat_entity, query=topic_title_query, limit=200)
     if not topics:
-        # если поиск ничего не дал — покажем все темы
-        topics = await get_forum_topics(client, chat_entity, query=None, limit=100)
+        raise RuntimeError(f"Не нашёл темы по запросу: {topic_title_query}")
 
-    print("\n📌 Темы форума:")
+    if len(topics) == 1:
+        t = topics[0]
+        log(f"✅ Тема найдена: ID={t.id} | {t.title}")
+        return int(t.id)
+
+    log("\n📌 Нашлось несколько тем. Выбери:")
     for i, t in enumerate(topics, start=1):
-        # t.id — это topic_id (его обычно и используют как reply_to для iter_messages)
-        print(f"{i:>2}. ID={t.id} | {t.title}")
+        log(f"{i:>2}. ID={t.id} | {t.title}")
 
-    raw = input("\nВыбери номер темы (Enter = 1): ").strip()
+    raw = input("\nНомер темы (Enter = 1): ").strip()
     idx = 1 if raw == "" else int(raw)
     idx = max(1, min(idx, len(topics)))
     chosen = topics[idx - 1]
-    print(f"✅ Выбрана тема: ID={chosen.id} | {chosen.title}\n")
+    log(f"✅ Выбрана тема: ID={chosen.id} | {chosen.title}")
     return int(chosen.id)
 
 
-async def find_polls_in_topic(client: TelegramClient, chat_id: int, topic_id: int, limit: int) -> list:
+# =========================
+# POLLS
+# =========================
+async def find_polls_in_topic(client: TelegramClient, chat_id: int, topic_id: int, limit: int):
     polls = []
     async for msg in client.iter_messages(chat_id, limit=limit, reply_to=topic_id):
         if isinstance(getattr(msg, "media", None), MessageMediaPoll):
-            poll = msg.media.poll
-            q = as_text(poll.question)
+            q = as_text(msg.media.poll.question)
             polls.append((msg, q))
-    return polls  # уже в порядке от нового к старому
+    return polls  # от нового к старому
 
 
-def pick_poll(polls: list, poll_query: str | None):
+def pick_poll(polls, poll_query: Optional[str]):
     if not polls:
         return None
 
@@ -240,93 +273,158 @@ def pick_poll(polls: list, poll_query: str | None):
         matches = [(m, q) for (m, q) in polls if pq in (q or "").casefold()]
         if len(matches) == 1:
             return matches[0][0]
+
         if len(matches) > 1:
-            print("🗳️ Нашлось несколько опросов по запросу. Выбери нужный:")
+            log("🗳️ Нашлось несколько опросов по запросу. Выбери нужный:")
             for i, (m, q) in enumerate(matches, start=1):
                 d = m.date.strftime("%Y-%m-%d %H:%M") if m.date else "?"
-                print(f"{i:>2}. [{d}] id={m.id} | {q[:90]}")
+                log(f"{i:>2}. [{d}] id={m.id} | {q[:90]}")
             raw = input("\nНомер опроса (Enter = 1): ").strip()
             idx = 1 if raw == "" else int(raw)
             idx = max(1, min(idx, len(matches)))
             return matches[idx - 1][0]
 
-        # если по query не нашли — упадём на самый последний
-        print("⚠️ По --poll ничего не найдено, беру самый последний опрос в теме.")
+        log("⚠️ По --poll ничего не найдено, беру самый последний опрос в теме.")
 
-    # по умолчанию — самый последний (самый новый)
     return polls[0][0]
 
 
-async def fetch_poll_voters_for_checkmark(client: TelegramClient, chat_peer, poll_msg):
-    poll = poll_msg.media.poll
+def is_yes_option_text(txt: str) -> bool:
+    """
+    Позитивные варианты:
+      - репетиции: ✅, "приду" (но не "не приду")
+      - концерты: "смогу ..." (но не "не смогу")
+    """
+    t = (txt or "").strip().casefold()
+    t = " ".join(t.split())
 
-    def is_yes_option(txt) -> bool:
-        t = as_text(txt).strip().casefold()
-        t = " ".join(t.split())  # нормализуем пробелы
-
-        # Репетиции
-        if "✅" in t:
-            return True
-        if "приду" in t and "не приду" not in t:
-            return True
-
-        # Концерты: "Смогу" vs "Не смогу"
-        # ВАЖНО: "не смогу" содержит "смогу", поэтому исключаем явно
-        if "смогу" in t and "не смогу" not in t and not t.startswith("не "):
-            return True
-
+    # явное "нет"
+    if "не смогу" in t or (t.startswith("не") and "смогу" in t):
+        return False
+    if "не приду" in t or (t.startswith("не") and "приду" in t):
         return False
 
-    # 1) Находим нужную опцию (✅ / приду / смогу)
-    target = None
+    if "✅" in t:
+        return True
+    if "приду" in t:
+        return True
+    if "смогу" in t:
+        return True
+
+    return False
+
+
+def extract_time_minutes(txt: str) -> Optional[int]:
+    """
+    Ищем время в варианте ответа: "в 13:00", "к 10", "в 9", "к 8:30".
+    """
+    t = (txt or "").strip().casefold()
+    t = " ".join(t.split())
+    m = re.search(r"(?:\bв\b|\bк\b)\s*(\d{1,2})(?::(\d{2}))?\b", t)
+    if not m:
+        return None
+    hh = int(m.group(1))
+    mm = int(m.group(2) or "0")
+    if not (0 <= hh <= 23 and 0 <= mm <= 59):
+        return None
+    return hh * 60 + mm
+
+
+def kw_rank(txt: str) -> int:
+    """
+    Смысловой порядок вариантов без времени.
+    """
+    t = (txt or "").strip().casefold()
+    t = " ".join(t.split())
+
+    if "саунд" in t or "чек" in t:
+        return 0
+    if "репет" in t:
+        return 1
+    if "концерт" in t:
+        return 2
+    return 3
+
+
+async def fetch_poll_voters_yes_union(
+        client: TelegramClient,
+        chat_peer,
+        poll_msg,
+        votes_page_size: int,
+        smart_sort: bool,
+) -> Tuple[Set[int], List[str]]:
+    """
+    Собирает ВСЕ "позитивные" варианты и объединяет проголосовавших.
+    Возвращает (set(user_id), list(option_texts_sorted))
+    """
+    poll = poll_msg.media.poll
+
+    # 1) Найти все позитивные варианты
+    targets = []
     for ans in poll.answers:
-        if is_yes_option(ans.text):
-            target = ans
-            break
+        txt = as_text(ans.text)
+        if is_yes_option_text(txt):
+            targets.append(ans)
 
-    if not target:
+    if not targets:
         answers_debug = "\n".join([f"- {as_text(a.text)}" for a in poll.answers])
-        raise RuntimeError(
-            "В опросе нет подходящего варианта (✅/приду/смогу).\n"
-            f"Варианты:\n{answers_debug}"
-        )
+        raise RuntimeError("В опросе нет позитивных вариантов (✅/приду/смогу).\n" + answers_debug)
 
-    # 2) Проверяем, что опрос не анонимный
+    # 2) Умная сортировка по флагу
+    if smart_sort:
+        index_map = {id(a): i for i, a in enumerate(targets)}
+
+        def sort_key(a):
+            txt = as_text(a.text)
+            tmin = extract_time_minutes(txt)
+            if tmin is not None:
+                return (0, tmin, kw_rank(txt), index_map[id(a)])
+            return (1, kw_rank(txt), 10_000, index_map[id(a)])
+
+        targets = sorted(targets, key=sort_key)
+
+    # 3) Опрос должен быть неанонимный
     if not getattr(poll, "public_voters", False):
         raise RuntimeError("Опрос анонимный — Telegram не отдаёт список проголосовавших.")
 
-    # 3) Выгружаем проголосовавших за найденную опцию
-    voter_ids = set()
-    offset = None
+    # 4) Выгрузить голоса по каждой позитивной опции и объединить
+    voter_ids: Set[int] = set()
+    option_texts: List[str] = []
 
-    while True:
-        res = await client(functions.messages.GetPollVotesRequest(
-            peer=chat_peer,
-            id=poll_msg.id,
-            option=target.option,  # bytes
-            offset=offset,
-            limit=VOTES_PAGE_SIZE
-        ))
+    for target in targets:
+        option_text = as_text(target.text)
+        option_texts.append(option_text)
+        log(f"⬇️  Загружаю голоса за: {option_text}")
 
-        for v in getattr(res, "votes", []) or []:
-            peer = getattr(v, "peer", None)
-            if isinstance(peer, types.PeerUser):
-                voter_ids.add(int(peer.user_id))
+        offset = None
+        while True:
+            res = await client(functions.messages.GetPollVotesRequest(
+                peer=chat_peer,
+                id=poll_msg.id,
+                option=target.option,  # bytes
+                offset=offset,
+                limit=votes_page_size
+            ))
 
-        for u in getattr(res, "users", []) or []:
-            if getattr(u, "id", None):
-                voter_ids.add(int(u.id))
+            for v in getattr(res, "votes", []) or []:
+                peer = getattr(v, "peer", None)
+                if isinstance(peer, types.PeerUser):
+                    voter_ids.add(int(peer.user_id))
 
-        next_offset = getattr(res, "next_offset", None)
-        if not next_offset:
-            break
-        offset = next_offset
+            for u in getattr(res, "users", []) or []:
+                if getattr(u, "id", None):
+                    voter_ids.add(int(u.id))
 
-    return voter_ids, as_text(target.text)
+            next_offset = getattr(res, "next_offset", None)
+            if not next_offset:
+                break
+            offset = next_offset
+
+    return voter_ids, option_texts
 
 
-def build_report(voter_ids: set[int], musicians: dict[int, str], header: str) -> str:
-    counts: dict[str, int] = {}
+def build_report(poll_question: str, option_texts: List[str], voter_ids: Set[int], musicians: Dict[int, str]) -> str:
+    counts: Dict[str, int] = {}
     found = 0
 
     for uid in voter_ids:
@@ -345,9 +443,14 @@ def build_report(voter_ids: set[int], musicians: dict[int, str], header: str) ->
         "неизвестно",
     ]
 
-    lines = [header, ""]
-    total = 0
+    lines: List[str] = []
+    lines.append("🎵 СТАТИСТИКА")
+    lines.append("")
+    lines.append(f"Опрос: {poll_question}")
+    lines.append(f"Учитываю варианты: {' / '.join(option_texts)}")
+    lines.append("")
 
+    total = 0
     for k in order:
         if k in counts:
             c = counts[k]
@@ -364,91 +467,127 @@ def build_report(voter_ids: set[int], musicians: dict[int, str], header: str) ->
         lines.append(f"⚠️ Не найдено в базе: {not_found}")
 
     lines.append("")
-    lines.append("ℹ️ Данные собраны из голосов опроса (✅)")
-
     return "\n".join(lines)
 
 
-# ====== MAIN ======
+# =========================
+# MAIN
+# =========================
 async def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--config", type=str, default="config.ini", help="Путь к config.ini")
     parser.add_argument("--list-topics", action="store_true", help="Показать темы и выйти")
-    parser.add_argument("--topic-id", type=int, default=0, help="ID темы (topic_id)")
+    parser.add_argument("--topic-id", type=int, default=0, help="ID темы (как ты обычно используешь в reply_to)")
     parser.add_argument("--topic", type=str, default="", help="Найти тему по части названия")
     parser.add_argument("--poll", type=str, default="", help="Найти опрос по подстроке в вопросе")
+    parser.add_argument("--smart-sort", action="store_true",
+                        help="Умно сортировать варианты 'Смогу...' по времени/смыслу")
     args = parser.parse_args()
 
-    print("🎻 Запуск парсера оркестра...")
+    conf = load_config(args.config)
+
+    API_ID = conf["API_ID"]
+    API_HASH = conf["API_HASH"]
+    SESSION_NAME = conf["SESSION_NAME"]
+    CHAT_ID = conf["CHAT_ID"]
+    DEFAULT_TOPIC_ID = conf["DEFAULT_TOPIC_ID"]
+    MUSICIANS_CSV = conf["MUSICIANS_CSV"]
+    SEARCH_LIMIT = conf["SEARCH_LIMIT"]
+    VOTES_PAGE_SIZE = conf["VOTES_PAGE_SIZE"]
+
+    log("🎻 Запуск парсера оркестра...")
 
     client = TelegramClient(SESSION_NAME, API_ID, API_HASH)
     await client.start()
-    print("✅ Подключено к Telegram")
+    log("✅ Подключено к Telegram")
 
     try:
         chat_entity = await client.get_entity(CHAT_ID)
         chat_peer = await client.get_input_entity(CHAT_ID)
 
+        # list topics
         if args.list_topics:
             topics = await get_forum_topics(client, chat_entity, query=None, limit=200)
-            print("\n📌 Темы форума:")
+            log("\n📌 Темы форума:")
             for t in topics:
-                print(f"ID={t.id} | {t.title} | top_message={t.top_message}")
+                # покажем и id, и top_message на всякий случай
+                log(f"ID={t.id} | top_message={t.top_message} | {t.title}")
+            log("\n👋 Завершено")
             return
 
-        # 1) Выбор темы
+        # choose topic id
         topic_id = args.topic_id if args.topic_id else 0
         if not topic_id and args.topic.strip():
             topic_id = await choose_topic_id(client, chat_entity, args.topic.strip())
-
         if not topic_id:
             topic_id = DEFAULT_TOPIC_ID
 
-        print(f"🧵 Тема: {topic_id}")
+        log(f"🔍 Ищу опрос в теме ID {topic_id}...")
 
-        # 2) Поиск опроса в теме
         polls = await find_polls_in_topic(client, CHAT_ID, topic_id, SEARCH_LIMIT)
         if not polls:
-            await client.send_message("me", f"❌ В теме {topic_id} не найдено опросов.")
-            print("❌ Опросов не найдено")
+            msg = f"❌ В теме {topic_id} не найдено опросов."
+            log(msg)
+            await client.send_message("me", msg)
             return
 
         poll_msg = pick_poll(polls, args.poll.strip() if args.poll else None)
         if not poll_msg:
-            await client.send_message("me", "❌ Не удалось выбрать опрос.")
+            msg = "❌ Не удалось выбрать опрос."
+            log(msg)
+            await client.send_message("me", msg)
             return
 
         poll_question = as_text(poll_msg.media.poll.question)
-        print(f"✅ Выбран опрос id={poll_msg.id}: {poll_question[:80]}")
+        log(f"✅ Найден опрос: {poll_question[:60]}...")
 
-        # 3) Получаем проголосовавших за ✅
+        # print answers like раньше
+        poll = poll_msg.media.poll
+        for i, ans in enumerate(poll.answers):
+            log(f"Ответ {i}: {as_text(ans.text)}")
+
+        if args.smart_sort:
+            log("🧠 Smart sort: включён (сортирую 'Смогу...' по времени/смыслу)")
+
+        # fetch voters
         try:
-            voter_ids, option_text = await fetch_poll_voters_for_checkmark(client, chat_peer, poll_msg)
-        except errors.PollVoteRequiredError:
-            await client.send_message(
-                "me",
-                "❌ Telegram требует, чтобы этот аккаунт проголосовал в опросе, прежде чем смотреть голоса.\n"
-                "Проголосуй (любой вариант) и запусти снова."
+            voter_ids, option_texts = await fetch_poll_voters_yes_union(
+                client=client,
+                chat_peer=chat_peer,
+                poll_msg=poll_msg,
+                votes_page_size=VOTES_PAGE_SIZE,
+                smart_sort=args.smart_sort,
             )
-            print("❌ POLL_VOTE_REQUIRED")
+        except errors.PollVoteRequiredError:
+            msg = (
+                "❌ Telegram требует, чтобы этот аккаунт проголосовал в опросе, прежде чем смотреть голоса.\n"
+                "Проголосуй (любой вариант) и запусти скрипт снова."
+            )
+            log(msg)
+            await client.send_message("me", msg)
             return
         except RuntimeError as e:
+            log(f"❌ {e}")
             await client.send_message("me", f"❌ {e}")
-            print(f"❌ {e}")
             return
 
-        print(f"👥 Голосов за '{option_text}': {len(voter_ids)}")
+        log(f"📊 На мероприятие идут: {len(voter_ids)} человек")
 
-        # 4) Грузим базу и делаем отчёт
-        musicians = load_musicians(MUSICIANS_CSV)
-        header = f"🎵 СТАТИСТИКА\n\nОпрос: {poll_question}\nОпция: {option_text}\n"
-        report = build_report(voter_ids, musicians, header)
+        # load musicians
+        musicians, total_rows = load_musicians_csv(MUSICIANS_CSV)
+        log(f"📁 Загружено {total_rows} записей")
+        log(f"✅ В базе {len(musicians)} музыкантов с инструментами")
+
+        # report
+        report = build_report(poll_question, option_texts, voter_ids, musicians)
 
         await client.send_message("me", report)
-        print("✅ Отчет отправлен в Избранное")
+        log("✅ Отчет отправлен!")
+        log(report)
+        log("👋 Завершено")
 
     finally:
         await client.disconnect()
-        print("👋 Завершено")
 
 
 if __name__ == "__main__":
