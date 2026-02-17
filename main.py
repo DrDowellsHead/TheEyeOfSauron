@@ -460,7 +460,20 @@ def build_report(poll_question: str, option_texts: List[str], voter_ids: Set[int
             lines.append(f"{ICON.get(k, '🎵')} {c} {name}")
 
     lines.append("")
-    lines.append(f"📊 ВСЕГО: {total} человек")
+
+    paired = {"первые скрипки", "вторые скрипки", "альт", "виолончель", "контрабас"}
+
+    pupitre = 0
+    strings_pupitre = 0
+    for instr, n in counts.items():
+        if instr in paired:
+            strings_pupitre += (n + 1) // 2
+        else:
+            pupitre += n
+
+    lines.append(f"📊 Всего: {total} человек")
+    lines.append(f"🎼 Нужно Пультов: {pupitre + strings_pupitre}")
+    lines.append(f"❤️ Из них для струнников: {strings_pupitre}, 🥴 для остальных: {pupitre}")
 
     not_found = len(voter_ids) - found
     if not_found > 0:
