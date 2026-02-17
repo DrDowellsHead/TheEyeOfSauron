@@ -5,7 +5,7 @@
 Поддерживает:
 - Репетиции: варианты с `✅` и/или текстом `приду`
 - Концерты: все варианты `Смогу ...` (например: “Смогу к 10”, “Смогу в 13:00”, “Смогу к концерту”)
-- Умную сортировку вариантов “Смогу ...” по времени/смыслу (по флагу)
+- Умную сортировку вариантов “Смогу ...” по времени/смыслу (`--smart-sort`)
 
 > Важно: Telegram отдаёт список проголосовавших только для **неанонимных** опросов (public voters).  
 > Если опрос анонимный — получить `user_id` голосовавших нельзя.
@@ -22,7 +22,7 @@ python -m venv .venv
 source .venv/bin/activate
 
 python -m pip install -U pip
-python -m pip install telethon
+python -m pip install -r requirements.txt
 ```
 
 ## Установка (Android / Termux)
@@ -30,7 +30,8 @@ python -m pip install telethon
 ```
 pkg update && pkg upgrade -y
 pkg install -y python
-python -m pip install telethon
+
+python -m pip install -r requirements.txt
 ```
 
 # CLI flags (main.py)
