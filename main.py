@@ -473,7 +473,7 @@ def build_report(poll_question: str, option_texts: List[str], voter_ids: Set[int
 
     lines.append(f"📊 Всего: {total} человек")
     lines.append(f"🎼 Нужно Пультов: {pupitre + strings_pupitre}")
-    lines.append(f"❤️ Из них для струнников: {strings_pupitre}, 🥴 для остальных: {pupitre}")
+    lines.append(f"❤️ Из них для струнников: {strings_pupitre}, 💔 для остальных: {pupitre}")
 
     not_found = len(voter_ids) - found
     if not_found > 0:
