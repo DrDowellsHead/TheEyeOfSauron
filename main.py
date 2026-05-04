@@ -145,7 +145,7 @@ def normalize_instrument(raw: str) -> str:
     if "сакс" in s:
         if "сопран" in s:
             return "сопрано-саксофон"
-        if "альт-сакс" in s:
+        if "альт" in s:
             return "альт-саксофон"
         if "тенор" in s:
             return "тенор-саксофон"
