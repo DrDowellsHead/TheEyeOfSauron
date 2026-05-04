@@ -77,6 +77,11 @@ INSTR_FORMS = {
     "кларнет": ("кларнет", "кларнета", "кларнетов"),
     "фагот": ("фагот", "фагота", "фаготов"),
     "саксофон": ("саксофон", "саксофона", "саксофонов"),
+    "сопрано-саксофон": ("сопрано-саксофон", "сопрано-саксофона", "сопрано-саксофонов"),
+    "альт-саксофон": ("альт-саксофон", "альт-саксофона", "альт-саксофонов"),
+    "баритон-саксофон": ("баритон-саксофон", "баритон-саксофона", "баритон-саксофонов"),
+    "тенор-саксофон": ("тенор-саксофон", "тенор-саксофона", "тенор-саксофонов"),
+    "бас-саксофон": ("бас-саксофон", "бас-саксофона", "бас-саксофонов"),
     "валторна": ("валторна", "валторны", "валторн"),
     "труба": ("труба", "трубы", "труб"),
     "тромбон": ("тромбон", "тромбона", "тромбонов"),
@@ -99,6 +104,11 @@ ICON = {
     "кларнет": "🎵",
     "фагот": "🎵",
     "саксофон": "🎷",
+    "сопрано-саксофон": "🎷",
+    "альт-саксофон": "🎷",
+    "баритон-саксофон": "🎷",
+    "тенор-саксофон": "🎷",
+    "бас-саксофон": "🎷",
     "валторна": "🎺",
     "труба": "🎺",
     "тромбон": "🎺",
@@ -130,6 +140,21 @@ def normalize_instrument(raw: str) -> str:
             return "вторые скрипки"
         return "первые скрипки"  # если база хранит просто "скрипки" — выбери, что удобнее
 
+#======= Ветка Саксов =======
+
+    if "сакс" in s:
+        if "сопран" in s:
+            return "сопрано-саксофон"
+        if "альт-сакс" in s:
+            return "альт-саксофон"
+        if "тенор" in s:
+            return "тенор-саксофон"
+        if "барит" in s:
+            return "баритон-саксофон"
+        if "бас" in s:
+            return "бас-саксофон"
+        return "саксофон"
+
     if "альт" in s:
         return "альт"
     if "виолонч" in s:
@@ -145,8 +170,6 @@ def normalize_instrument(raw: str) -> str:
         return "кларнет"
     if "фагот" in s:
         return "фагот"
-    if "сакс" in s:
-        return "саксофон"
 
     if "валторн" in s:
         return "валторна"
@@ -255,17 +278,13 @@ async def choose_topic_id(client: TelegramClient, chat_entity, topic_title_query
 # =========================
 # POLLS
 # =========================
-async def find_polls_in_topic(client, chat, topic_id: int, limit: int):
+async def find_polls_in_topic(client: TelegramClient, chat_id: int, topic_id: int, limit: int):
     polls = []
-    kwargs = {}
-    if topic_id > 0:
-        kwargs["reply_to"] = topic_id
-
-    async for msg in client.iter_messages(chat, limit=limit, **kwargs):
+    async for msg in client.iter_messages(chat_id, limit=limit, reply_to=topic_id):
         if isinstance(getattr(msg, "media", None), MessageMediaPoll):
             q = as_text(msg.media.poll.question)
             polls.append((msg, q))
-    return polls
+    return polls  # от нового к старому
 
 
 def pick_poll(polls, poll_query: Optional[str]):
@@ -441,7 +460,7 @@ def build_report(poll_question: str, option_texts: List[str], voter_ids: Set[int
     order = [
         "первые скрипки", "вторые скрипки",
         "альт", "виолончель", "контрабас",
-        "флейта", "гобой", "кларнет", "фагот", "саксофон",
+        "флейта", "гобой", "кларнет", "фагот", "сопрано-саксофон", "альт-саксофон", "тенор-саксофон", "баритон-саксофон", "бас-саксофон",
         "валторна", "труба", "тромбон", "туба",
         "ударные", "фортепиано", "арфа", "дирижёр",
         "неизвестно",
@@ -465,7 +484,7 @@ def build_report(poll_question: str, option_texts: List[str], voter_ids: Set[int
 
     lines.append("")
 
-    paired = {"первые скрипки", "вторые скрипки", "альт", "виолончель"}
+    paired = {"первые скрипки", "вторые скрипки", "альт", "виолончель", "контрабас"}
 
     pupitre = 0
     strings_pupitre = 0
@@ -487,46 +506,6 @@ def build_report(poll_question: str, option_texts: List[str], voter_ids: Set[int
     return "\n".join(lines)
 
 
-# Функция выбора чата по ID
-def entity_kind(ent) -> str:
-    if isinstance(ent, types.User):
-        return "user"
-    if isinstance(ent, types.Chat):
-        return "chat"
-    if isinstance(ent, types.Channel):
-        return "channel/supergroup"
-    return type(ent).__name__
-
-
-async def pick_chat_interactively(client: TelegramClient, limit: int = 30):
-    """
-    Показывает первые N диалогов и даёт выбрать.
-    Возвращает entity выбранного диалога.
-    """
-    dialogs = []
-    i = 0
-    async for d in client.iter_dialogs():
-        dialogs.append(d)
-        i += 1
-        if i >= limit:
-            break
-
-    log("\n📚 Диалоги:")
-    for idx, d in enumerate(dialogs, start=1):
-        ent = d.entity
-        log(f"{idx:>2}. {d.name} | id={d.id} | type={entity_kind(ent)}")
-
-    raw = input("\nНомер диалога (Enter = 1): ").strip()
-    n = 1 if raw == "" else int(raw)
-    n = max(1, min(n, len(dialogs)))
-    chosen = dialogs[n - 1].entity
-
-    title = getattr(chosen, "title", getattr(chosen, "first_name", ""))
-    cid = getattr(chosen, "id", None)
-    log(f"✅ Выбран чат: {title} (id={cid})\n")
-    return chosen
-
-
 # =========================
 # MAIN
 # =========================
@@ -539,11 +518,6 @@ async def main():
     parser.add_argument("--poll", type=str, default="", help="Найти опрос по подстроке в вопросе")
     parser.add_argument("--smart-sort", action="store_true",
                         help="Умно сортировать варианты 'Смогу...' по времени/смыслу")
-    parser.add_argument("--chat", type=str, default="",
-                        help="Чат: id / @username / ссылка. Перезаписывает chat_id из config.ini")
-    parser.add_argument("--pick-chat", action="store_true", help="Выбрать чат из списка диалогов (интерактивно)")
-    parser.add_argument("--pick-chat-limit", type=int, default=30,
-                        help="Сколько диалогов показать при --pick-chat (по умолчанию 30)")
     args = parser.parse_args()
 
     conf = load_config(args.config)
@@ -564,22 +538,8 @@ async def main():
     log("✅ Подключено к Telegram")
 
     try:
-        # 0) Выбор чата: config -> --chat -> --pick-chat
-        chat_ref = None
-
-        if args.pick_chat:
-            chat_entity = await pick_chat_interactively(client, limit=args.pick_chat_limit)
-        else:
-            # если указали --chat, используем его, иначе берём из конфига
-            chat_ref = args.chat.strip() if args.chat.strip() else str(CHAT_ID)
-            chat_entity = await client.get_entity(chat_ref)
-
-        chat_peer = await client.get_input_entity(chat_entity)
-
-        # для логов
-        chat_title = getattr(chat_entity, "title",
-                             getattr(chat_entity, "first_name", str(getattr(chat_entity, "id", ""))))
-        log(f"📌 Чат: {chat_title} (id={getattr(chat_entity, 'id', '')})")
+        chat_entity = await client.get_entity(CHAT_ID)
+        chat_peer = await client.get_input_entity(CHAT_ID)
 
         # list topics
         if args.list_topics:
@@ -600,15 +560,9 @@ async def main():
 
         log(f"🔍 Ищу опрос в теме ID {topic_id}...")
 
-        polls = await find_polls_in_topic(client, chat_entity, topic_id, SEARCH_LIMIT)
-
-        # Авто-фоллбек: если тема не форумная/не та — пробуем искать опросы по всему чату
-        if not polls and topic_id > 0:
-            log("⚠️ В этой теме опросов нет. Пробую искать по всему чату (без topic_id)...")
-            polls = await find_polls_in_topic(client, chat_entity, 0, SEARCH_LIMIT)
-
+        polls = await find_polls_in_topic(client, CHAT_ID, topic_id, SEARCH_LIMIT)
         if not polls:
-            msg = f"❌ Не найдено опросов (topic_id={topic_id}, fallback=0 тоже пусто)."
+            msg = f"❌ В теме {topic_id} не найдено опросов."
             log(msg)
             await client.send_message("me", msg)
             return
