@@ -6,6 +6,7 @@ import os
 import re
 from typing import Dict, List, Optional, Set, Tuple
 
+from telethon.utils import get_peer_id
 from telethon import TelegramClient, functions, errors
 from telethon.tl import types
 from telethon.tl.types import MessageMediaPoll
@@ -524,6 +525,62 @@ def entity_kind(ent) -> str:
     return type(ent).__name__
 
 
+def parse_chat_ref(chat_ref):
+    """
+    Превращает строку вида "-100..." или "467..." в int.
+    Если передали уже int/entity — возвращает как есть.
+    """
+    if isinstance(chat_ref, int):
+        return chat_ref
+    if not isinstance(chat_ref, str):
+        return chat_ref
+    s = chat_ref.strip()
+    if re.fullmatch(r"-?\d+", s):
+        n = int(s)
+        # Если это НЕ -100..., а просто отрицательное (как Telethon иногда показывает для обычных chat),
+        # то приводим к положительному id (PeerChat).
+        if n < 0 and not s.startswith("-100"):
+            return abs(n)
+        return n
+    return s  # username/ссылка
+
+
+async def resolve_chat_entity(client: TelegramClient, chat_ref, scan_limit: int = 200):
+    """
+    Универсально получает entity:
+    1) пробует get_entity напрямую
+    2) если не вышло — сканирует диалоги и ищет по peer_id
+    """
+    ref = parse_chat_ref(chat_ref)
+
+    # 1) прямой способ
+    try:
+        return await client.get_entity(ref)
+    except Exception:
+        pass
+
+    # 2) скан диалогов (самый надёжный для -100... когда нет access_hash в кэше)
+    target = ref if isinstance(ref, int) else None
+    if target is None:
+        # если это @username/ссылка — direct get_entity уже попытался, значит реально не находится
+        raise ValueError(f"Cannot find any entity corresponding to {chat_ref!r}")
+
+    i = 0
+    async for d in client.iter_dialogs():
+        ent = d.entity
+        pid = get_peer_id(ent)  # это то же самое, что d.id (-100... для супергрупп)
+        if pid == target:
+            return ent
+        # на всякий случай: если передали +id, а pid оказался -id
+        if pid == -target:
+            return ent
+        i += 1
+        if i >= scan_limit:
+            break
+
+    raise ValueError(f"Cannot find any entity corresponding to {chat_ref!r} (scanned {scan_limit} dialogs)")
+
+
 async def pick_chat_interactively(client: TelegramClient, limit: int = 30):
     """
     Показывает первые N диалогов и даёт выбрать.
@@ -597,8 +654,8 @@ async def main():
             chat_entity = await pick_chat_interactively(client, limit=args.pick_chat_limit)
         else:
             # если указали --chat, используем его, иначе берём из конфига
-            chat_ref = args.chat.strip() if args.chat.strip() else str(CHAT_ID)
-            chat_entity = await client.get_entity(chat_ref)
+            chat_ref = args.chat.strip() if args.chat.strip() else CHAT_ID
+            chat_entity = await resolve_chat_entity(client, chat_ref, scan_limit=max(args.pick_chat_limit, 200))
 
         chat_peer = await client.get_input_entity(chat_entity)
 
