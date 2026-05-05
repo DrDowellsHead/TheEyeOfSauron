@@ -553,14 +553,28 @@ async def main():
 
         # choose topic id
         topic_id = args.topic_id if args.topic_id else 0
+
         if not topic_id and args.topic.strip():
             topic_id = await choose_topic_id(client, chat_entity, args.topic.strip())
+
+        # если topic_id не задан явно:
+        # - для обычных чатов/групп (types.Chat, types.User) тем нет -> topic_id = 0
+        # - для супергрупп/каналов (types.Channel) можно взять DEFAULT_TOPIC_ID
         if not topic_id:
-            topic_id = DEFAULT_TOPIC_ID
+            if isinstance(chat_entity, types.Channel) and DEFAULT_TOPIC_ID:
+                topic_id = DEFAULT_TOPIC_ID
+            else:
+                topic_id = 0
 
         log(f"🔍 Ищу опрос в теме ID {topic_id}...")
 
-        polls = await find_polls_in_topic(client, CHAT_ID, topic_id, SEARCH_LIMIT)
+        try:
+            polls = await find_polls_in_topic(client, CHAT_ID, topic_id, SEARCH_LIMIT)
+        except errors.rpcerrorlist.PeerIdInvalidError:
+            log("⚠️ Этот чат не поддерживает темы/reply_to. Ищу опрос по всему чату (без topic_id)...")
+            topic_id = 0
+            polls = await find_polls_in_topic(client, chat_entity, 0, SEARCH_LIMIT)
+
         if not polls:
             msg = f"❌ В теме {topic_id} не найдено опросов."
             log(msg)
