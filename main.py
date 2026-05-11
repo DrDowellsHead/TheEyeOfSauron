@@ -475,6 +475,8 @@ def build_report(poll_question: str, option_texts: List[str], voter_ids: Set[int
     ]
 
     lines: List[str] = []
+    lines.append("The Eye Of Sauron")
+    lines.append("")
     lines.append("🎵 СТАТИСТИКА")
     lines.append("")
     lines.append(f"Опрос: {poll_question}")
@@ -759,7 +761,13 @@ async def main():
         # report
         report = build_report(poll_question, option_texts, voter_ids, musicians)
 
-        await client.send_message("me", report)
+        IMAGE_PATH = "TheEye.jpg"
+
+        if os.path.exists(IMAGE_PATH):
+            await client.send_file("me", IMAGE_PATH, caption="I see you, little hobbit!" )
+            await client.send_message("me", report)
+        else:
+            await client.send_message("me", report)
         log("✅ Отчет отправлен!")
         log(report)
         log("👋 Завершено")
