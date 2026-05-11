@@ -475,7 +475,7 @@ def build_report(poll_question: str, option_texts: List[str], voter_ids: Set[int
     ]
 
     lines: List[str] = []
-    lines.append("The Eye Of Sauron")
+    lines.append("††† The Eye Of Sauron †††")
     lines.append("")
     lines.append("🎵 СТАТИСТИКА")
     lines.append("")
