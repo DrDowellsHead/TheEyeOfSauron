@@ -730,26 +730,26 @@ async def main():
             log("🧠 Smart sort: включён (сортирую 'Смогу...' по времени/смыслу)")
 
         # fetch voters
-        try:
-            voter_ids, option_texts = await fetch_poll_voters_yes_union(
-                client=client,
-                chat_peer=chat_peer,
-                poll_msg=poll_msg,
-                votes_page_size=VOTES_PAGE_SIZE,
-                smart_sort=args.smart_sort,
-            )
-        except errors.PollVoteRequiredError:
-            msg = (
-                "❌ Telegram требует, чтобы этот аккаунт проголосовал в опросе, прежде чем смотреть голоса.\n"
-                "Проголосуй (любой вариант) и запусти скрипт снова."
-            )
-            log(msg)
-            await client.send_message("me", msg)
-            return
-        except RuntimeError as e:
-            log(f"❌ {e}")
-            await client.send_message("me", f"❌ {e}")
-            return
+    try:
+        voter_ids, option_texts = await fetch_poll_voters_yes_union(
+            client=client,
+            chat_peer=chat_peer,
+            poll_msg=poll_msg,
+            votes_page_size=VOTES_PAGE_SIZE,
+            smart_sort=args.smart_sort,
+        )
+    except errors.PollVoteRequiredError:
+        msg = (
+            "❌ Telegram требует, чтобы этот аккаунт проголосовал в опросе, прежде чем смотреть голоса.\n"
+            "Проголосуй (любой вариант) и запусти скрипт снова."
+        )
+        log(msg)
+        await client.send_message("me", msg)
+        return
+    except RuntimeError as e:
+        log(f"❌ {e}")
+        await client.send_message("me", f"❌ {e}")
+        return
 
         log(f"📊 На мероприятие идут: {len(voter_ids)} человек")
 
@@ -763,12 +763,25 @@ async def main():
 
         IMAGE_PATH = "TheEye.jpg"
 
-        if os.path.exists(IMAGE_PATH):
-            await client.send_file("me", IMAGE_PATH, caption="I see you, little hobbit!" )
-            await client.send_message("me", report)
-        else:
-            await client.send_message("me", report)
-        log("✅ Отчет отправлен!")
+        async def send_bundle(target, reply_to=None):
+            # Картинка
+            if os.path.exists(IMAGE_PATH):
+                await client.send_file(target, IMAGE_PATH, caption="I see you, little hobbit!", reply_to=reply_to)
+
+            # Отчёт
+            if reply_to:
+                await client.send_message(target, report, reply_to=reply_to)
+            else:
+                await client.send_message(target, report)
+
+        # 1) Отправка в Избранное
+        await send_bundle("me", reply_to=None)
+        log("✅ Отчёт отправлен!")
+
+        if args.send_to_chat:
+            await send_bundle(chat_entity, reply_to=poll_msg.id)
+            log("✅ Отчет отправлен в чат (ответом на опрос)!")
+
         log(report)
         log("👋 Завершено")
 
