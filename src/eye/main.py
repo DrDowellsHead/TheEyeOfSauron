@@ -5,15 +5,15 @@ import argparse
 
 from telethon import TelegramClient, errors
 
-from core_log import log
-from config_utils import load_config
-from tg_chat import pick_chat_interactively, resolve_chat_entity
-from tg_topics import get_forum_topics, choose_topic_id
-from tg_polls import find_polls_in_topic, pick_poll, fetch_poll_voters_yes_union
-from musicians_db import load_musicians_csv
-from report_builder import build_report
-from sender import send_report
-from text_utils import as_text
+from .core_log import log
+from .config_utils import load_config
+from .tg_chat import pick_chat_interactively, resolve_chat_entity
+from .tg_topics import get_forum_topics, choose_topic_id
+from .tg_polls import find_polls_in_topic, pick_poll, fetch_poll_voters_yes_union
+from .musicians_db import load_musicians_csv
+from .report_builder import build_report
+from .sender import send_report
+from .text_utils import as_text
 
 
 async def main():

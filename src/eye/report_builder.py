@@ -2,8 +2,8 @@
 
 from typing import Dict, List, Set
 
-from instruments import INSTR_FORMS, ICON, normalize_instrument
-from text_utils import plural_ru
+from .instruments import INSTR_FORMS, ICON, normalize_instrument
+from .text_utils import plural_ru
 
 
 def build_report(poll_question: str, option_texts: List[str], voter_ids: Set[int], musicians: Dict[int, str]) -> str:

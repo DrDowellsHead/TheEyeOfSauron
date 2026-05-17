@@ -6,7 +6,7 @@ from telethon import TelegramClient
 from telethon.tl import types
 from telethon.utils import get_peer_id
 
-from core_log import log
+from .core_log import log
 
 
 def entity_kind(ent) -> str:

@@ -7,8 +7,8 @@ from telethon import TelegramClient, functions
 from telethon.tl import types
 from telethon.tl.types import MessageMediaPoll
 
-from core_log import log
-from text_utils import as_text
+from .core_log import log
+from .text_utils import as_text
 
 
 async def find_polls_in_topic(client, chat, topic_id: int, limit: int):

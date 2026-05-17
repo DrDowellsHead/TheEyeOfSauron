@@ -4,7 +4,7 @@ from typing import Optional
 
 from telethon import TelegramClient, functions
 
-from core_log import log
+from .core_log import log
 
 
 async def get_forum_topics(client: TelegramClient, chat_entity, query: Optional[str], limit: int = 100):
