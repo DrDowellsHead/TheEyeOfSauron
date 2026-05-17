@@ -671,27 +671,18 @@ async def main():
             topics = await get_forum_topics(client, chat_entity, query=None, limit=200)
             log("\n📌 Темы форума:")
             for t in topics:
-                # покажем и id, и top_message на всякий случай
                 log(f"ID={t.id} | top_message={t.top_message} | {t.title}")
             log("\n👋 Завершено")
             return
 
-        # choose topic id
+        # topic id
         topic_id = args.topic_id if args.topic_id else 0
-
         if not topic_id and args.topic.strip():
             topic_id = await choose_topic_id(client, chat_entity, args.topic.strip())
-
-        # если topic_id не задан явно:
-        # - для обычных чатов/групп (types.Chat, types.User) тем нет -> topic_id = 0
-        # - для супергрупп/каналов (types.Channel) можно взять DEFAULT_TOPIC_ID
         if not topic_id:
-            if isinstance(chat_entity, types.Channel) and DEFAULT_TOPIC_ID:
-                topic_id = DEFAULT_TOPIC_ID
-            else:
-                topic_id = 0
+            topic_id = DEFAULT_TOPIC_ID
 
-        log(f"🔍 Ищу опрос в теме ID {topic_id}...")
+        log(f"🔍 Ищу опрос (topic_id={topic_id})...")
 
         try:
             polls = await find_polls_in_topic(client, chat_entity, topic_id, SEARCH_LIMIT)
@@ -700,7 +691,7 @@ async def main():
             topic_id = 0
             polls = await find_polls_in_topic(client, chat_entity, 0, SEARCH_LIMIT)
 
-        # Авто-фоллбек: если тема не форумная/не та — пробуем искать опросы по всему чату
+        # fallback без topic
         if not polls and topic_id > 0:
             log("⚠️ В этой теме опросов нет. Пробую искать по всему чату (без topic_id)...")
             polls = await find_polls_in_topic(client, chat_entity, 0, SEARCH_LIMIT)
@@ -730,26 +721,26 @@ async def main():
             log("🧠 Smart sort: включён (сортирую 'Смогу...' по времени/смыслу)")
 
         # fetch voters
-    try:
-        voter_ids, option_texts = await fetch_poll_voters_yes_union(
-            client=client,
-            chat_peer=chat_peer,
-            poll_msg=poll_msg,
-            votes_page_size=VOTES_PAGE_SIZE,
-            smart_sort=args.smart_sort,
-        )
-    except errors.PollVoteRequiredError:
-        msg = (
-            "❌ Telegram требует, чтобы этот аккаунт проголосовал в опросе, прежде чем смотреть голоса.\n"
-            "Проголосуй (любой вариант) и запусти скрипт снова."
-        )
-        log(msg)
-        await client.send_message("me", msg)
-        return
-    except RuntimeError as e:
-        log(f"❌ {e}")
-        await client.send_message("me", f"❌ {e}")
-        return
+        try:
+            voter_ids, option_texts = await fetch_poll_voters_yes_union(
+                client=client,
+                chat_peer=chat_peer,
+                poll_msg=poll_msg,
+                votes_page_size=VOTES_PAGE_SIZE,
+                smart_sort=args.smart_sort,
+            )
+        except errors.PollVoteRequiredError:
+            msg = (
+                "❌ Telegram требует, чтобы этот аккаунт проголосовал в опросе, прежде чем смотреть голоса.\n"
+                "Проголосуй (любой вариант) и запусти скрипт снова."
+            )
+            log(msg)
+            await client.send_message("me", msg)
+            return
+        except RuntimeError as e:
+            log(f"❌ {e}")
+            await client.send_message("me", f"❌ {e}")
+            return
 
         log(f"📊 На мероприятие идут: {len(voter_ids)} человек")
 
@@ -764,20 +755,25 @@ async def main():
         IMAGE_PATH = "TheEye.jpg"
 
         async def send_bundle(target, reply_to=None):
-            # Картинка
+            # картинка
             if os.path.exists(IMAGE_PATH):
-                await client.send_file(target, IMAGE_PATH, caption="I see you, little hobbit!", reply_to=reply_to)
-
-            # Отчёт
+                await client.send_file(
+                    target,
+                    IMAGE_PATH,
+                    caption="I see you, little hobbit!",
+                    reply_to=reply_to
+                )
+            # отчёт
             if reply_to:
                 await client.send_message(target, report, reply_to=reply_to)
             else:
                 await client.send_message(target, report)
 
-        # 1) Отправка в Избранное
+        # 1) Всегда отправляем в Избранное
         await send_bundle("me", reply_to=None)
-        log("✅ Отчёт отправлен!")
+        log("✅ Отчет отправлен в Избранное!")
 
+        # 2) Если включён флаг — дополнительно отправляем в чат ответом на опрос
         if args.send_to_chat:
             await send_bundle(chat_entity, reply_to=poll_msg.id)
             log("✅ Отчет отправлен в чат (ответом на опрос)!")
