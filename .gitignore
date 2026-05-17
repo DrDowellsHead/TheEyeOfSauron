@@ -3,7 +3,6 @@ orchestra_parser.session
 *.xls;xlsx;csv
 /.venv
 /.idea
-Музыканты.csv
-участники.csv
-Участники.csv
+data/Музыканты.csv
+data/Участники.csv
 config.ini

@@ -40,7 +40,7 @@ async def main():
     await client.start()
     print("✅ Подключено к Telegram")
 
-    out_file = "Участники.csv"
+    out_file = "../data/Участники.csv"
     chat_id = conf["CHAT_ID"]
 
     try:
