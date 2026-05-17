@@ -629,6 +629,8 @@ async def main():
     parser.add_argument("--pick-chat", action="store_true", help="Выбрать чат из списка диалогов (интерактивно)")
     parser.add_argument("--pick-chat-limit", type=int, default=30,
                         help="Сколько диалогов показать при --pick-chat (по умолчанию 30)")
+    parser.add_argument(
+        "--send-to-chat", action="store_true", help="Дополнительно отправить отчёт в чат ответом на сообщение опроса")
     args = parser.parse_args()
 
     conf = load_config(args.config)
