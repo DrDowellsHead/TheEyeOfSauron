@@ -10,6 +10,9 @@ from telethon.tl.types import MessageMediaPoll
 from .core_log import log
 from .text_utils import as_text
 
+# Это учитывание вариантов по-умолчанию
+DEFAULT_YES_KEYWORDS = ["✅", "приду", "смогу", "буду"]
+
 
 async def find_polls_in_topic(client, chat, topic_id: int, limit: int):
     polls = []
@@ -49,24 +52,29 @@ def pick_poll(polls, poll_query: Optional[str]):
     return polls[0][0]
 
 
-def is_yes_option_text(txt: str) -> bool:
+def is_yes_option_text(txt: str, positive_keywords: List[str]) -> bool:
     t = (txt or "").strip().casefold()
     t = " ".join(t.split())
 
-    if "не смогу" in t or (t.startswith("не") and "смогу" in t):
+    if t.startswith("не "):
+        for kw in positive_keywords:
+            k = (kw or "").strip().casefold()
+            if k and k in t:
+                return False
+
+    if "не смогу" in t:
         return False
-    if "не приду" in t or (t.startswith("не") and "приду" in t):
+    if "не приду" in t:
+        return False
+    if re.search(r"\bне\s+буду\b", t):
         return False
 
-    if "✅" in t:
-        return True
-    if "приду" in t:
-        return True
-    if "смогу" in t:
-        return True
-    # исправлено только форматирование, смысл тот же
-    if "буду" in t or re.search(r"\bбуду\b", t):
-        return True
+    for kw in positive_keywords:
+        k = (kw or "").strip().casefold()
+        if not k:
+            continue
+        if k in t:
+            return True
 
     return False
 
@@ -103,13 +111,17 @@ async def fetch_poll_voters_yes_union(
         poll_msg,
         votes_page_size: int,
         smart_sort: bool,
+        positive_keywords: Optional[List[str]] = None,
 ) -> Tuple[Set[int], List[str]]:
     poll = poll_msg.media.poll
+
+    if not positive_keywords:
+        positive_keywords = DEFAULT_YES_KEYWORDS
 
     targets = []
     for ans in poll.answers:
         txt = as_text(ans.text)
-        if is_yes_option_text(txt):
+        if is_yes_option_text(txt, positive_keywords):
             targets.append(ans)
 
     if not targets:
