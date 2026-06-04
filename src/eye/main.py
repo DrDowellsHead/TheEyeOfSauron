@@ -14,6 +14,39 @@ from .musicians_db import load_musicians_csv
 from .report_builder import build_report
 from .sender import send_report
 from .text_utils import as_text
+from .tg_polls import (
+    find_polls_in_topic,
+    pick_poll,
+    fetch_poll_voters_yes_union,
+    DEFAULT_YES_KEYWORDS,   # >>> CHANGE (YES-KEYWORDS)
+)
+
+
+def parse_keywords(values):
+    """Parse repeated --yes args. Supports comma-separated lists.
+    Returns unique keywords preserving order.
+    """
+    out = []
+    for v in values or []:
+        if not v:
+            continue
+        parts = [p.strip() for p in v.split(",")]
+        out.extend([p for p in parts if p])
+    seen = set()
+    res = []
+
+    for p in out:
+        key = p.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        res.append(p)
+
+    return res
+
+
+# Это значения позитивных ответов по-умолчанию
+DEFAULT_YES_KEYWORDS = ["✅", "приду", "смогу", "буду"]
 
 
 async def main():
@@ -32,7 +65,18 @@ async def main():
                         help="Сколько диалогов показать при --pick-chat (по умолчанию 30)")
     parser.add_argument("--send-to-chat", action="store_true",
                         help="Дополнительно отправить отчёт в чат ответом на сообщение опроса")
+    parser.add_argument(
+        "--yes",
+        action="append",
+        default=[],
+        help="Ключевые слова для позитивных ответов (можно несколько раз и через запятую). "
+             "Пример: --yes 'смогу' --yes 'приду,✅'",
+    )
     args = parser.parse_args()
+
+    yes_keywords = parse_keywords(args.yes)
+    if not yes_keywords:
+        yes_keywords = DEFAULT_YES_KEYWORDS
 
     conf = load_config(args.config)
 
@@ -124,6 +168,7 @@ async def main():
                 poll_msg=poll_msg,
                 votes_page_size=VOTES_PAGE_SIZE,
                 smart_sort=args.smart_sort,
+                positive_keywords=yes_keywords,
             )
         except errors.PollVoteRequiredError:
             msg = (
