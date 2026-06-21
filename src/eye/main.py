@@ -18,7 +18,7 @@ from .tg_polls import (
     find_polls_in_topic,
     pick_poll,
     fetch_poll_voters_yes_union,
-    DEFAULT_YES_KEYWORDS,   # >>> CHANGE (YES-KEYWORDS)
+    DEFAULT_YES_KEYWORDS,  # >>> CHANGE (YES-KEYWORDS)
 )
 
 
@@ -53,7 +53,7 @@ async def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=str, default="config.ini", help="Путь к config.ini")
     parser.add_argument("--list-topics", action="store_true", help="Показать темы и выйти")
-    parser.add_argument("--topic-id", type=int, default=0, help="ID темы (как ты обычно используешь в reply_to)")
+    parser.add_argument("--topic-id", type=int, default=None, help="ID темы; 0 = искать по всему чату")
     parser.add_argument("--topic", type=str, default="", help="Найти тему по части названия")
     parser.add_argument("--poll", type=str, default="", help="Найти опрос по подстроке в вопросе")
     parser.add_argument("--smart-sort", action="store_true",
@@ -119,10 +119,18 @@ async def main():
             return
 
         # topic id
-        topic_id = args.topic_id if args.topic_id else 0
-        if not topic_id and args.topic.strip():
+        # Логика:
+        # 1. Если явно передали --topic-id — используем его, даже если это 0.
+        # 2. Если передали --topic — ищем тему по названию в выбранном чате.
+        # 3. Если выбрали другой чат через --pick-chat или --chat — НЕ подставляем DEFAULT_TOPIC_ID.
+        # 4. DEFAULT_TOPIC_ID используем только для дефолтного чата из config.ini.
+        if args.topic_id is not None:
+            topic_id = args.topic_id
+        elif args.topic.strip():
             topic_id = await choose_topic_id(client, chat_entity, args.topic.strip())
-        if not topic_id:
+        elif args.pick_chat or args.chat.strip():
+            topic_id = 0
+        else:
             topic_id = DEFAULT_TOPIC_ID
 
         log(f"🔍 Ищу опрос (topic_id={topic_id})...")

@@ -3,7 +3,7 @@
 import re
 from typing import List, Optional, Set, Tuple
 
-from telethon import TelegramClient, functions
+from telethon import TelegramClient, functions, errors
 from telethon.tl import types
 from telethon.tl.types import MessageMediaPoll
 
@@ -17,13 +17,21 @@ DEFAULT_YES_KEYWORDS = ["✅", "приду", "смогу", "буду"]
 async def find_polls_in_topic(client, chat, topic_id: int, limit: int):
     polls = []
     kwargs = {}
-    if topic_id > 0:
+
+    if topic_id and topic_id > 0:
         kwargs["reply_to"] = topic_id
 
-    async for msg in client.iter_messages(chat, limit=limit, **kwargs):
-        if isinstance(getattr(msg, "media", None), MessageMediaPoll):
-            q = as_text(msg.media.poll.question)
-            polls.append((msg, q))
+    try:
+        async for msg in client.iter_messages(chat, limit=limit, **kwargs):
+            if isinstance(getattr(msg, "media", None), MessageMediaPoll):
+                q = as_text(msg.media.poll.question)
+                polls.append((msg, q))
+
+    except (errors.MsgIdInvalidError, errors.PeerIdInvalidError):
+        if topic_id and topic_id > 0:
+            return []
+        raise
+
     return polls
 
 
