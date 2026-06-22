@@ -14,23 +14,108 @@ from .text_utils import as_text
 DEFAULT_YES_KEYWORDS = ["✅", "приду", "смогу", "буду"]
 
 
-async def find_polls_in_topic(client, chat, topic_id: int, limit: int):
+def poll_question_matches(question: str, search: Optional[str]) -> bool:
+    if not search:
+        return True
+    return search.casefold() in (question or "").casefold()
+
+
+async def get_pinned_poll(client, chat, search: Optional[str] = None):
+    """
+    Проверяет закреплённое сообщение.
+    Если закреп — опрос, и его вопрос подходит под search, возвращает [(msg, question)].
+    Иначе возвращает [].
+    """
+    try:
+        entity = await client.get_entity(chat)
+
+        pinned_msg_id = None
+
+        if isinstance(entity, types.Channel):
+            full = await client(functions.channels.GetFullChannelRequest(entity))
+            pinned_msg_id = getattr(full.full_chat, "pinned_msg_id", None)
+
+        elif isinstance(entity, types.Chat):
+            full = await client(functions.messages.GetFullChatRequest(entity.id))
+            pinned_msg_id = getattr(full.full_chat, "pinned_msg_id", None)
+
+        if not pinned_msg_id:
+            return []
+
+        msg = await client.get_messages(entity, ids=pinned_msg_id)
+
+        if isinstance(getattr(msg, "media", None), MessageMediaPoll):
+            q = as_text(msg.media.poll.question)
+            if poll_question_matches(q, search):
+                log(f"📌 Найден закреплённый опрос: {q[:80]}")
+                return [(msg, q)]
+
+    except Exception as e:
+        # Закреп — вспомогательная попытка. Если не вышло, не валим весь скрипт.
+        log(f"⚠️ Не удалось проверить закреплённый опрос: {type(e).__name__}: {e}")
+
+    return []
+
+
+async def find_polls_in_topic(client, chat, topic_id: int, limit: int, search: Optional[str] = None):
     polls = []
+    seen_ids = set()
+
+    def add_poll(msg, question):
+        if msg.id in seen_ids:
+            return
+        seen_ids.add(msg.id)
+        polls.append((msg, question))
+
+    # 1) Если ищем по всему чату, сначала проверяем закреп.
+    # Для твоего случая "Туса после репы": topic_id=0, опрос закреплён.
+    if not topic_id or topic_id <= 0:
+        pinned_polls = await get_pinned_poll(client, chat, search=search)
+        for msg, q in pinned_polls:
+            add_poll(msg, q)
+
     kwargs = {}
 
     if topic_id and topic_id > 0:
         kwargs["reply_to"] = topic_id
 
+    # 2) Пытаемся использовать Telegram search.
+    # Но он может НЕ искать внутри poll.question.
+    if search:
+        kwargs["search"] = search
+
     try:
         async for msg in client.iter_messages(chat, limit=limit, **kwargs):
             if isinstance(getattr(msg, "media", None), MessageMediaPoll):
                 q = as_text(msg.media.poll.question)
-                polls.append((msg, q))
+                if poll_question_matches(q, search):
+                    add_poll(msg, q)
 
     except (errors.MsgIdInvalidError, errors.PeerIdInvalidError):
         if topic_id and topic_id > 0:
             return []
         raise
+
+    # 3) Если search был, но Telegram search ничего не дал,
+    # делаем обычный проход по истории и фильтруем уже по poll.question.
+    if search and not polls:
+        log("⚠️ Telegram search не нашёл опрос. Пробую обычный проход по истории и фильтр по вопросу опроса...")
+
+        kwargs = {}
+        if topic_id and topic_id > 0:
+            kwargs["reply_to"] = topic_id
+
+        try:
+            async for msg in client.iter_messages(chat, limit=limit, **kwargs):
+                if isinstance(getattr(msg, "media", None), MessageMediaPoll):
+                    q = as_text(msg.media.poll.question)
+                    if poll_question_matches(q, search):
+                        add_poll(msg, q)
+
+        except (errors.MsgIdInvalidError, errors.PeerIdInvalidError):
+            if topic_id and topic_id > 0:
+                return []
+            raise
 
     return polls
 
