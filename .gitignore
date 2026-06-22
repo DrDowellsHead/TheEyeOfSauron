@@ -1,8 +1,14 @@
 collect_ids.session
 orchestra_parser.session
-*.xls;xlsx;csv
+*.xls
+*.xlsx
+*.csv
 /.venv
 /.idea
 data/Музыканты.csv
 data/Участники.csv
 config.ini
+*.session
+*.session-journal
+*.session-wal
+*.session-shm
