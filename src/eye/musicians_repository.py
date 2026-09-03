@@ -1,4 +1,7 @@
-"""musicians_db.py — источник данных музыкантов."""
+"""
+Работа с музыкантами.
+Источник данных — Google Sheets.
+"""
 
 from typing import Dict, Tuple
 
@@ -14,7 +17,14 @@ def load_musicians(
         worksheet_name: str,
 ) -> Tuple[Dict[int, str], int]:
     """
-    Загружает музыкантов из Google Sheets.
+    Загружает список музыкантов.
+
+    Возвращает:
+        {
+            user_id: instrument
+        }
+
+    и количество записей.
     """
 
     worksheet = connect_to_google_sheet(

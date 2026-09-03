@@ -9,7 +9,7 @@ from .core_log import log
 from .config_utils import load_config
 from .tg_chat import pick_chat_interactively, resolve_chat_entity
 from .tg_topics import get_forum_topics, choose_topic_id
-from .musicians_db import load_musicians
+from .musicians_repository  import load_musicians
 from .report_builder import build_report
 from .sender import send_report
 from .text_utils import as_text
