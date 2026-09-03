@@ -1,6 +1,7 @@
 """Работа с Google Sheets."""
 
 import os
+from datetime import datetime
 
 import gspread
 from google.oauth2.service_account import Credentials
@@ -76,79 +77,87 @@ def load_musicians_from_sheet(worksheet):
 
 def sync_musicians_to_sheet(worksheet, telegram_users):
     """
-    Синхронизация участников Telegram с Google Sheets.
+    Синхронизация Telegram пользователей с Google Sheets.
 
-    telegram_users:
-        {
-            user_id: {
-                "first_name": "...",
-                "last_name": "...",
-                "username": "..."
-            }
-        }
-
-    Инструменты существующих пользователей сохраняются.
+    Правила:
+    - user_id является ключом;
+    - имя, фамилия, username обновляются;
+    - инструмент никогда не изменяется автоматически;
+    - новые пользователи получают пустой инструмент;
+    - обновление выполняется одним batch_update.
     """
 
-    existing = worksheet.get_all_records()
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-    rows_by_id = {}
+    records = worksheet.get_all_records()
 
-    for index, row in enumerate(existing, start=2):
+    existing = {}
+
+    for index, row in enumerate(records, start=2):
         uid = str(row.get("user_id", "")).strip()
 
         if uid:
-            rows_by_id[uid] = {
+            existing[uid] = {
                 "row": index,
                 "instrument": row.get("Инструмент", ""),
             }
 
-    # если таблица пустая — создаём заголовки
-    if not existing:
-        worksheet.append_row(
-            [
-                "user_id",
-                "first_name",
-                "last_name",
-                "username",
-                "Инструмент",
-            ]
-        )
-
     updates = []
 
+    # Обновляем существующих
     for uid, user in telegram_users.items():
 
-        uid_str = str(uid)
+        uid = str(uid)
 
-        if uid_str in rows_by_id:
-            row = rows_by_id[uid_str]["row"]
+        if uid in existing:
+            row = existing[uid]["row"]
 
-            instrument = rows_by_id[uid_str]["instrument"]
+            instrument = existing[uid]["instrument"]
 
             updates.append(
                 {
-                    "range": f"A{row}:E{row}",
+                    "range": f"A{row}:F{row}",
                     "values": [[
                         uid,
                         user["first_name"],
                         user["last_name"],
                         user["username"],
                         instrument,
+                        now,
                     ]]
                 }
             )
 
-        else:
-            worksheet.append_row(
+    # Добавляем новых пользователей
+    new_rows = []
+
+    for uid, user in telegram_users.items():
+
+        uid = str(uid)
+
+        if uid not in existing:
+            new_rows.append(
                 [
                     uid,
                     user["first_name"],
                     user["last_name"],
                     user["username"],
                     "",
+                    now,
                 ]
             )
 
+    # Массовое обновление
     if updates:
         worksheet.batch_update(updates)
+
+    # Массовое добавление
+    if new_rows:
+        start_row = len(records) + 2
+
+        end_row = start_row + len(new_rows) - 1
+
+        worksheet.update(
+            f"A{start_row}:F{end_row}",
+            new_rows,
+        )

@@ -28,7 +28,6 @@ def load_config(path: str = "config.ini") -> dict:
         "SESSION_NAME": get("telegram", "session_name", "orchestra_parser"),
         "CHAT_ID": int(get("telegram", "chat_id")),
         "DEFAULT_TOPIC_ID": int(get("telegram", "default_topic_id", "0")),
-        "MUSICIANS_CSV": get("files", "musicians_csv", "Музыканты.csv"),
         "SEARCH_LIMIT": int(get("search", "search_limit", "300")),
         "VOTES_PAGE_SIZE": int(get("search", "votes_page_size", "100")),
         "GOOGLE_CREDENTIALS": get("google_sheets", "credentials_file", ),
