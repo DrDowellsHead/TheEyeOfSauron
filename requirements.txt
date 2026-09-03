@@ -6,5 +6,5 @@ rsa==4.9.1
 six==1.17.0
 Telethon==1.42.0
 tzdata==2025.3
-gspread==6.2.1
-google-auth==2.40.3
+gspread
+oauth2client

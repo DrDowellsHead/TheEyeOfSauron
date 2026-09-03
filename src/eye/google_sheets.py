@@ -4,7 +4,7 @@ import os
 from datetime import datetime
 
 import gspread
-from google.oauth2.service_account import Credentials
+from oauth2client.service_account import ServiceAccountCredentials
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -27,9 +27,9 @@ def connect_to_google_sheet(
             f"{credentials_file}"
         )
 
-    credentials = Credentials.from_service_account_file(
+    credentials = ServiceAccountCredentials.from_json_keyfile_name(
         credentials_file,
-        scopes=SCOPES,
+        SCOPES,
     )
 
     client = gspread.authorize(credentials)
