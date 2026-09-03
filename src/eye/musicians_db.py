@@ -1,28 +1,26 @@
-"""musicians_db.py — чтение Музыканты.csv (user_id -> instrument)."""
+"""musicians_db.py — источник данных музыкантов."""
 
-import csv
-import os
 from typing import Dict, Tuple
 
+from .google_sheets import (
+    connect_to_google_sheet,
+    load_musicians_from_sheet,
+)
 
-def load_musicians_csv(path: str) -> Tuple[Dict[int, str], int]:
-    if not os.path.exists(path):
-        raise FileNotFoundError(f"Файл не найден: {path}")
 
-    musicians: Dict[int, str] = {}
-    total_rows = 0
+def load_musicians(
+        credentials_file: str,
+        spreadsheet_id: str,
+        worksheet_name: str,
+) -> Tuple[Dict[int, str], int]:
+    """
+    Загружает музыкантов из Google Sheets.
+    """
 
-    with open(path, "r", encoding="utf-8-sig", newline="") as f:
-        reader = csv.DictReader(f, delimiter=";")
-        for row in reader:
-            total_rows += 1
-            uid = (row.get("user_id") or "").strip()
-            instr = (row.get("Инструмент") or "").strip()
-            if not uid or not instr:
-                continue
-            try:
-                musicians[int(uid)] = instr
-            except ValueError:
-                continue
+    worksheet = connect_to_google_sheet(
+        credentials_file=credentials_file,
+        spreadsheet_id=spreadsheet_id,
+        worksheet_name=worksheet_name,
+    )
 
-    return musicians, total_rows
+    return load_musicians_from_sheet(worksheet)

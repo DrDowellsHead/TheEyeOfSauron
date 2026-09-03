@@ -9,7 +9,7 @@ from .core_log import log
 from .config_utils import load_config
 from .tg_chat import pick_chat_interactively, resolve_chat_entity
 from .tg_topics import get_forum_topics, choose_topic_id
-from .musicians_db import load_musicians_csv
+from .musicians_db import load_musicians
 from .report_builder import build_report
 from .sender import send_report
 from .text_utils import as_text
@@ -80,7 +80,9 @@ async def main():
     SESSION_NAME = conf["SESSION_NAME"]
     CHAT_ID = conf["CHAT_ID"]
     DEFAULT_TOPIC_ID = conf["DEFAULT_TOPIC_ID"]
-    MUSICIANS_CSV = conf["MUSICIANS_CSV"]
+    GOOGLE_CREDENTIALS = conf["GOOGLE_CREDENTIALS"]
+    GOOGLE_SPREADSHEET_ID = conf["GOOGLE_SPREADSHEET_ID"]
+    GOOGLE_WORKSHEET_NAME = conf["GOOGLE_WORKSHEET_NAME"]
     SEARCH_LIMIT = conf["SEARCH_LIMIT"]
     VOTES_PAGE_SIZE = conf["VOTES_PAGE_SIZE"]
 
@@ -189,7 +191,11 @@ async def main():
 
         log(f"📊 На мероприятие идут: {len(voter_ids)} человек")
 
-        musicians, total_rows = load_musicians_csv(MUSICIANS_CSV)
+        musicians, total_rows = load_musicians(
+            credentials_file=GOOGLE_CREDENTIALS,
+            spreadsheet_id=GOOGLE_SPREADSHEET_ID,
+            worksheet_name=GOOGLE_WORKSHEET_NAME,
+        )
         log(f"📁 Загружено {total_rows} записей")
         log(f"✅ В базе {len(musicians)} музыкантов с инструментами")
 

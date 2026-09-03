@@ -31,4 +31,7 @@ def load_config(path: str = "config.ini") -> dict:
         "MUSICIANS_CSV": get("files", "musicians_csv", "Музыканты.csv"),
         "SEARCH_LIMIT": int(get("search", "search_limit", "300")),
         "VOTES_PAGE_SIZE": int(get("search", "votes_page_size", "100")),
+        "GOOGLE_CREDENTIALS": get("google_sheets", "credentials_file", ),
+        "GOOGLE_SPREADSHEET_ID": get("google_sheets", "spreadsheet_id", ),
+        "GOOGLE_WORKSHEET_NAME": get("google_sheets", "worksheet_name", ),
     }
