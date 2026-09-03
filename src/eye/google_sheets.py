@@ -72,3 +72,83 @@ def load_musicians_from_sheet(worksheet):
         musicians[user_id] = instrument
 
     return musicians, total_rows
+
+
+def sync_musicians_to_sheet(worksheet, telegram_users):
+    """
+    Синхронизация участников Telegram с Google Sheets.
+
+    telegram_users:
+        {
+            user_id: {
+                "first_name": "...",
+                "last_name": "...",
+                "username": "..."
+            }
+        }
+
+    Инструменты существующих пользователей сохраняются.
+    """
+
+    existing = worksheet.get_all_records()
+
+    rows_by_id = {}
+
+    for index, row in enumerate(existing, start=2):
+        uid = str(row.get("user_id", "")).strip()
+
+        if uid:
+            rows_by_id[uid] = {
+                "row": index,
+                "instrument": row.get("Инструмент", ""),
+            }
+
+    # если таблица пустая — создаём заголовки
+    if not existing:
+        worksheet.append_row(
+            [
+                "user_id",
+                "first_name",
+                "last_name",
+                "username",
+                "Инструмент",
+            ]
+        )
+
+    updates = []
+
+    for uid, user in telegram_users.items():
+
+        uid_str = str(uid)
+
+        if uid_str in rows_by_id:
+            row = rows_by_id[uid_str]["row"]
+
+            instrument = rows_by_id[uid_str]["instrument"]
+
+            updates.append(
+                {
+                    "range": f"A{row}:E{row}",
+                    "values": [[
+                        uid,
+                        user["first_name"],
+                        user["last_name"],
+                        user["username"],
+                        instrument,
+                    ]]
+                }
+            )
+
+        else:
+            worksheet.append_row(
+                [
+                    uid,
+                    user["first_name"],
+                    user["last_name"],
+                    user["username"],
+                    "",
+                ]
+            )
+
+    if updates:
+        worksheet.batch_update(updates)
