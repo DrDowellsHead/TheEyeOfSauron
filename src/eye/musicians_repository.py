@@ -1,14 +1,9 @@
-"""
-Работа с музыкантами.
-Источник данных — Google Sheets.
-"""
+"""Репозиторий базы музыкантов."""
 
 from typing import Dict, Tuple
 
-from .google_sheets import (
-    connect_to_google_sheet,
-    load_musicians_from_sheet,
-)
+from .google_client import connect_to_google_sheet
+from .google_sheets import load_musicians_from_sheet
 
 
 def load_musicians(
@@ -16,16 +11,7 @@ def load_musicians(
         spreadsheet_id: str,
         worksheet_name: str,
 ) -> Tuple[Dict[int, str], int]:
-    """
-    Загружает список музыкантов.
-
-    Возвращает:
-        {
-            user_id: instrument
-        }
-
-    и количество записей.
-    """
+    """Загружает музыкантов из Google Sheets."""
 
     worksheet = connect_to_google_sheet(
         credentials_file=credentials_file,
@@ -33,4 +19,6 @@ def load_musicians(
         worksheet_name=worksheet_name,
     )
 
-    return load_musicians_from_sheet(worksheet)
+    return load_musicians_from_sheet(
+        worksheet
+    )

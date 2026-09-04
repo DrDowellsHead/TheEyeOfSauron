@@ -1,6 +1,6 @@
 import configparser
 
-from src.eye.google_sheets import connect_to_google_sheet
+from eye.google_sheets import connect_to_google_sheet
 
 
 def load_google_sheets_config():
