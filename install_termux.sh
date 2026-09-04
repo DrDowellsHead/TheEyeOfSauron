@@ -25,14 +25,16 @@ fi
 
 python -m venv .venv
 
+# Termux управляет pip через пакетный менеджер и запрещает его самообновление.
 .venv/bin/python -m pip install \
     --upgrade \
-    pip \
     setuptools
 
 .venv/bin/python -m pip install \
     --no-build-isolation \
     -e .
+
+.venv/bin/python -c "import eye, google.auth, requests, telethon"
 
 echo
 echo "✅ Установка завершена."
