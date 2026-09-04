@@ -12,3 +12,4 @@ config.ini
 *.session-journal
 *.session-wal
 *.session-shm
+credentials/*

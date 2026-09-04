@@ -4,18 +4,20 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "TheEyeOfSauron"
-version = "2.0"
+version = "2.2.0"
 description = "Telegram Orchestra Poll Parser"
+readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-  "pyaes==1.6.1",
-  "pyasn1==0.6.2",
-  "python-dateutil==2.9.0.post0",
-  "rsa==4.9.1",
-  "six==1.17.0",
-  "Telethon==1.42.0",
-  "tzdata==2025.3",
+    "Telethon==1.42.0",
+    "google-auth==2.40.3",
+    "requests==2.32.5",
+    "tzdata==2025.3",
 ]
+
+[project.scripts]
+eye-of-sauron = "eye.__main__:run"
+eye-sync-users = "eye.sync_users:run"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
