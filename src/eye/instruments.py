@@ -29,6 +29,11 @@ INSTR_FORMS = {
     "неизвестно": ("неизвестный", "неизвестных", "неизвестных"),
 }
 
+# Единственный источник порядка групп в отчёте. Раньше report_builder.py
+# содержал отдельный список и в нём случайно не оказалось общей категории
+# «саксофон», хотя нормализатор и словари эту категорию поддерживали.
+INSTRUMENT_ORDER = tuple(INSTR_FORMS)
+
 ICON: Dict[str, str] = {
     "первые скрипки": "🎻",
     "вторые скрипки": "🎻",
@@ -61,17 +66,17 @@ def normalize_instrument(raw: str) -> str:
     s = (raw or "").strip().lower().replace("ё", "е")
 
     if "скрип" in s:
-        if "1" in s:
-            return "первые скрипки"
-        if "2" in s:
+        if "2" in s or "втор" in s:
             return "вторые скрипки"
+        if "1" in s or "перв" in s:
+            return "первые скрипки"
         return "первые скрипки"
 
     # ======= Ветка Саксов =======
     if "сакс" in s:
         if "сопран" in s:
             return "сопрано-саксофон"
-        if "альт-сакс" in s:
+        if "альт" in s:
             return "альт-саксофон"
         if "тенор" in s:
             return "тенор-саксофон"
@@ -99,20 +104,22 @@ def normalize_instrument(raw: str) -> str:
 
     if "валторн" in s:
         return "валторна"
-    if "труба" in s:
+    if "труб" in s:
         return "труба"
     if "тромбон" in s:
         return "тромбон"
-    if "туба" in s:
+    if "туб" in s:
         return "туба"
 
     if "удар" in s or "перкус" in s:
         return "ударные"
     if "фортеп" in s or "пианино" in s:
         return "фортепиано"
-    if "арфа" in s:
+    if "арф" in s:
         return "арфа"
     if "дириж" in s:
         return "дирижёр"
+    if "неизвест" in s:
+        return "неизвестно"
 
     return s or "неизвестно"

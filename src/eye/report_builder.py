@@ -2,11 +2,16 @@
 
 from typing import Dict, List, Set
 
-from .instruments import INSTR_FORMS, ICON, normalize_instrument
+from .instruments import ICON, INSTR_FORMS, INSTRUMENT_ORDER, normalize_instrument
 from .text_utils import plural_ru
 
 
-def build_report(poll_question: str, option_texts: List[str], voter_ids: Set[int], musicians: Dict[int, str]) -> str:
+def build_report(
+    poll_question: str,
+    option_texts: List[str],
+    voter_ids: Set[int],
+    musicians: Dict[int, str],
+) -> str:
     counts: Dict[str, int] = {}
     found = 0
 
@@ -17,15 +22,10 @@ def build_report(poll_question: str, option_texts: List[str], voter_ids: Set[int
         key = normalize_instrument(musicians[uid])
         counts[key] = counts.get(key, 0) + 1
 
-    order = [
-        "первые скрипки", "вторые скрипки",
-        "альт", "виолончель", "контрабас",
-        "флейта", "гобой", "кларнет", "фагот",
-        "сопрано-саксофон", "альт-саксофон", "тенор-саксофон", "баритон-саксофон", "бас-саксофон",
-        "валторна", "труба", "тромбон", "туба",
-        "ударные", "фортепиано", "арфа", "дирижёр",
-        "неизвестно",
-    ]
+    # Не теряем нестандартные значения из таблицы: стандартные группы идут в
+    # заданном порядке, остальные — после них по алфавиту.
+    extra_instruments = sorted(set(counts).difference(INSTRUMENT_ORDER))
+    order = (*INSTRUMENT_ORDER, *extra_instruments)
 
     lines: List[str] = []
     lines.append("††† The Eye Of Sauron †††")
@@ -36,11 +36,10 @@ def build_report(poll_question: str, option_texts: List[str], voter_ids: Set[int
     lines.append(f"Учитываю варианты: {' / '.join(option_texts)}")
     lines.append("")
 
-    total = 0
+    total = sum(counts.values())
     for k in order:
         if k in counts:
             c = counts[k]
-            total += c
             f1, f2, f5 = INSTR_FORMS.get(k, (k, k, k))
             name = plural_ru(c, f1, f2, f5)
             lines.append(f"{ICON.get(k, '🎵')} {c} {name}")
@@ -57,7 +56,8 @@ def build_report(poll_question: str, option_texts: List[str], voter_ids: Set[int
         else:
             pupitre += n
 
-    lines.append(f"📊 Всего: {total} человек")
+    people_word = plural_ru(total, "человек", "человека", "человек")
+    lines.append(f"📊 Всего: {total} {people_word}")
     lines.append(f"🎼 Нужно Пультов: {pupitre + strings_pupitre}")
     lines.append(f"❤️ Из них для струнников: {strings_pupitre}, 💔 для остальных: {pupitre}")
 
