@@ -1,44 +1,26 @@
-import configparser
+"""Ручная проверка чтения базы музыкантов из Google Sheets."""
 
-from eye.google_sheets import connect_to_google_sheet
-
-
-def load_google_sheets_config():
-    """
-    Загружает настройки Google Sheets из config.ini.
-    """
-
-    config = configparser.ConfigParser()
-    config.read("config.ini", encoding="utf-8")
-
-    return {
-        "credentials_file": config["google_sheets"]["credentials_file"],
-        "spreadsheet_id": config["google_sheets"]["spreadsheet_id"],
-        "worksheet_name": config["google_sheets"]["worksheet_name"],
-    }
+from eye.config_utils import load_config
+from eye.google_client import GoogleSheetsClient
+from eye.google_sheets import load_musicians_from_sheet
 
 
 def main():
-    """
-    Проверяет подключение к Google Sheets.
-    """
+    """Подключается к таблице и читает текущую базу без изменений."""
 
-    settings = load_google_sheets_config()
-
-    worksheet = connect_to_google_sheet(
-        credentials_file=settings["credentials_file"],
-        spreadsheet_id=settings["spreadsheet_id"],
-        worksheet_name=settings["worksheet_name"],
+    settings = load_config()
+    client = GoogleSheetsClient.from_service_account(
+        credentials_file=settings["GOOGLE_CREDENTIALS"],
+        spreadsheet_id=settings["GOOGLE_SPREADSHEET_ID"],
+        worksheet_name=settings["GOOGLE_WORKSHEET_NAME"],
     )
+    musicians, total_rows = load_musicians_from_sheet(client)
 
     print("Успешное подключение!")
-
-    print(f"Таблица: {settings['spreadsheet_id']}")
-    print(f"Лист: {settings['worksheet_name']}")
-
-    records = worksheet.get_all_records()
-
-    print(f"Количество записей: {len(records)}")
+    print(f"Таблица: {settings['GOOGLE_SPREADSHEET_ID']}")
+    print(f"Лист: {settings['GOOGLE_WORKSHEET_NAME']}")
+    print(f"Количество строк: {total_rows}")
+    print(f"Музыкантов с корректным user_id: {len(musicians)}")
 
 
 if __name__ == "__main__":

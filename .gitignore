@@ -13,3 +13,5 @@ config.ini
 *.session-wal
 *.session-shm
 credentials/*
+__pycache__/
+*.py[cod]
