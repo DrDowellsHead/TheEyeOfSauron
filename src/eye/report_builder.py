@@ -13,12 +13,10 @@ def build_report(
     musicians: Dict[int, str],
 ) -> str:
     counts: Dict[str, int] = {}
-    found = 0
+    known_voter_ids = voter_ids.intersection(musicians)
+    missing_voter_ids = sorted(voter_ids.difference(musicians))
 
-    for uid in voter_ids:
-        if uid not in musicians:
-            continue
-        found += 1
+    for uid in known_voter_ids:
         key = normalize_instrument(musicians[uid])
         counts[key] = counts.get(key, 0) + 1
 
@@ -36,7 +34,6 @@ def build_report(
     lines.append(f"Учитываю варианты: {' / '.join(option_texts)}")
     lines.append("")
 
-    total = sum(counts.values())
     for k in order:
         if k in counts:
             c = counts[k]
@@ -56,14 +53,22 @@ def build_report(
         else:
             pupitre += n
 
-    people_word = plural_ru(total, "человек", "человека", "человек")
-    lines.append(f"📊 Всего: {total} {people_word}")
+    voters_total = len(voter_ids)
+    known_total = len(known_voter_ids)
+    missing_total = len(missing_voter_ids)
+    voters_word = plural_ru(voters_total, "человек", "человека", "человек")
+    known_word = plural_ru(known_total, "человек", "человека", "человек")
+    missing_word = plural_ru(missing_total, "человек", "человека", "человек")
+
+    lines.append(f"📊 Всего проголосовало: {voters_total} {voters_word}")
+    lines.append(f"✅ Учтено по инструментам: {known_total} {known_word}")
+    lines.append(f"⚠️ Не найдено в базе: {missing_total} {missing_word}")
+    if missing_voter_ids:
+        missing_ids = ", ".join(str(uid) for uid in missing_voter_ids)
+        lines.append(f"🔎 Telegram ID вне базы: {missing_ids}")
+
     lines.append(f"🎼 Нужно Пультов: {pupitre + strings_pupitre}")
     lines.append(f"❤️ Из них для струнников: {strings_pupitre}, 💔 для остальных: {pupitre}")
-
-    not_found = len(voter_ids) - found
-    if not_found > 0:
-        lines.append(f"⚠️ Не найдено в базе: {not_found}")
 
     lines.append("")
     lines.append("By: https://github.com/DrDowellsHead")

@@ -22,8 +22,25 @@ class ReportBuilderTests(unittest.TestCase):
         )
 
         self.assertIn("🎷 4 саксофона", report)
-        self.assertIn("📊 Всего: 4 человека", report)
+        self.assertIn("📊 Всего проголосовало: 4 человека", report)
+        self.assertIn("✅ Учтено по инструментам: 4 человека", report)
+        self.assertIn("⚠️ Не найдено в базе: 0 человек", report)
         self.assertIn("🎼 Нужно Пультов: 4", report)
+
+    def test_saxophone_subtypes_are_reported_separately(self):
+        musicians = {
+            1: "саксофон",
+            2: "сопрано саксофон",
+            3: "альт-саксофон",
+            4: "бас саксофон",
+        }
+
+        report = build_report("Проверка", ["Да"], set(musicians), musicians)
+
+        self.assertIn("🎷 1 саксофон", report)
+        self.assertIn("🎷 1 сопрано-саксофон", report)
+        self.assertIn("🎷 1 альт-саксофон", report)
+        self.assertIn("🎷 1 бас-саксофон", report)
 
     def test_all_found_musicians_are_included_in_total(self):
         musicians = {
@@ -41,7 +58,24 @@ class ReportBuilderTests(unittest.TestCase):
         self.assertIn("🎺 1 туба", report)
         self.assertIn("🎶 1 арфа", report)
         self.assertIn("🎵 1 редкий инструмент", report)
-        self.assertIn("📊 Всего: 5 человек", report)
+        self.assertIn("📊 Всего проголосовало: 5 человек", report)
+
+    def test_missing_voters_are_counted_and_listed_by_id(self):
+        musicians = {
+            10: "флейта",
+            20: "",
+            999: "труба",
+        }
+
+        report = build_report("Проверка", ["Да"], {10, 20, 30, 40}, musicians)
+
+        self.assertIn("🎵 1 флейта", report)
+        self.assertIn("❓ 1 неизвестный", report)
+        self.assertIn("📊 Всего проголосовало: 4 человека", report)
+        self.assertIn("✅ Учтено по инструментам: 2 человека", report)
+        self.assertIn("⚠️ Не найдено в базе: 2 человека", report)
+        self.assertIn("🔎 Telegram ID вне базы: 30, 40", report)
+        self.assertNotIn("999", report)
 
     def test_every_standard_category_is_rendered(self):
         musicians = {
@@ -55,7 +89,10 @@ class ReportBuilderTests(unittest.TestCase):
             with self.subTest(instrument=instrument):
                 singular = INSTR_FORMS[instrument][0]
                 self.assertIn(f"{ICON[instrument]} 1 {singular}", report)
-        self.assertIn(f"📊 Всего: {len(musicians)} человека", report)
+        self.assertIn(
+            f"📊 Всего проголосовало: {len(musicians)} человека",
+            report,
+        )
 
     def test_counts_and_desks_for_every_standard_category(self):
         paired = {"первые скрипки", "вторые скрипки", "альт", "виолончель"}
@@ -88,7 +125,10 @@ class ReportBuilderTests(unittest.TestCase):
                         f"{ICON[instrument]} {amount} {group_name}",
                         report,
                     )
-                    self.assertIn(f"📊 Всего: {amount} {people_word}", report)
+                    self.assertIn(
+                        f"📊 Всего проголосовало: {amount} {people_word}",
+                        report,
+                    )
                     self.assertIn(f"🎼 Нужно Пультов: {desks}", report)
 
 
